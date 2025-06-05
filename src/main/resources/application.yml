@@ -1,0 +1,14 @@
+ric:
+  cosmos:
+    rics:
+      ricGroup1:
+        uri: https://abhm-cosmosdb-account-ephemeral.documents.azure.com:443/
+        database: ric_database
+      ricGroup2:
+        uri: https://abhm-cosmos-single-write.documents.azure.com:443/
+        database: ric_database
+    shardCount: 8
+  mapping:
+    MSFT: ricGroup1
+    AAPL: ricGroup2
+    GOOG: ricGroup1
