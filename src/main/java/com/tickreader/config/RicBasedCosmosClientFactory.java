@@ -27,6 +27,7 @@ public class RicBasedCosmosClientFactory {
                         .endpoint(value.getUri())
                         .key("your-cosmos-key") // Replace with actual key or fetch from secure storage
                         .contentResponseOnWriteEnabled(true)
+                        .gatewayMode()
                         .buildAsyncClient();
 
                 clients.put(key, client);
