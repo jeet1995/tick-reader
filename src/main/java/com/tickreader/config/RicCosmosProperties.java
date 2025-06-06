@@ -34,7 +34,7 @@ public class RicCosmosProperties {
 
     public static class CosmosProperties {
         private String uri;
-        private String database;
+        private String databaseId;
 
         public String getUri() {
             return uri;
@@ -45,11 +45,11 @@ public class RicCosmosProperties {
         }
 
         public String getDatabaseId() {
-            return database;
+            return databaseId;
         }
 
-        public void setDatabase(String database) {
-            this.database = database;
+        public void setDatabaseId(String databaseId) {
+            this.databaseId = databaseId;
         }
     }
 }

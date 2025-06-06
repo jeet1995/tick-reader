@@ -2,6 +2,7 @@ package com.tickreader.service.impl;
 
 import com.azure.cosmos.CosmosAsyncClient;
 import com.azure.cosmos.CosmosAsyncContainer;
+import com.azure.cosmos.models.SqlQuerySpec;
 import com.tickreader.config.RicBasedCosmosClientFactory;
 import com.tickreader.config.RicCosmosProperties;
 import com.tickreader.config.RicMappingProperties;
@@ -11,6 +12,7 @@ import com.tickreader.service.utils.TickServiceUtils;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -81,5 +83,26 @@ public class TicksServiceImpl implements TicksService {
                 .take(totalTicks)
                 .collectList()
                 .block();
+    }
+
+    private SqlQuerySpec getSqlQuerySpec(
+            String tickIdentifier,
+            String containerId,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            boolean pinStart,
+            int tickCount) {
+
+        LocalDate localDate = LocalDate.parse(containerId);
+
+        String queryStartTime = startTime.compareTo(localDate.atStartOfDay()) >= 0 ? startTime.toString() : localDate.atStartOfDay().toString();
+        String queryEndTime = endTime.compareTo(localDate.atTime(23, 59, 59)) <= 0 ? endTime.toString() : localDate.atTime(23, 59, 59).toString();
+
+        if (pinStart) {
+            String query = "SELECT * FROM C WHERE C.pk = @tickIdentifier " +
+                    "AND C.timestamp >= @startTime AND C.timestamp <= @endTime ORDER BY C.timestamp ASC OFFSET 0 LIMIT " + tickCount;
+
+            return new SqlQuerySpec(query);
+        }
     }
 }
