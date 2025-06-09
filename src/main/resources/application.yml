@@ -2,10 +2,10 @@ ric:
   cosmos:
     rics:
       ricGroup1:
-        uri: https://abhm-cosmosdb-account-ephemeral.documents.azure.com:443/
+        uri: ${ricGroup1.databaseAccount}
         databaseId: ric_database
       ricGroup2:
-        uri: https://abhm-cosmos-single-write.documents.azure.com:443/
+        uri: ${ricGroup2.databaseAccount}
         databaseId: ric_database
     shardCount: 8
   mappings:

@@ -12,38 +12,35 @@
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <azure.cosmos.version>4.70.0</azure.cosmos.version>
-        <sping-cloud-azure.version>5.10.0</sping-cloud-azure.version>
     </properties>
-
 
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.0</version> <!-- or latest stable version -->
+        <version>3.5.0</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-
 
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>
+            <version>3.5.0</version>
         </dependency>
-        <!-- Web (REST APIs, controllers) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+            <version>3.5.0</version>
         </dependency>
         <dependency>
             <groupId>com.azure</groupId>
             <artifactId>azure-identity</artifactId>
-            <version>1.15.2</version>
+            <version>LATEST</version>
         </dependency>
         <dependency>
             <groupId>com.azure</groupId>
             <artifactId>azure-cosmos</artifactId>
-            <version>${azure.cosmos.version}</version>
+            <version>LATEST</version>
         </dependency>
     </dependencies>
 

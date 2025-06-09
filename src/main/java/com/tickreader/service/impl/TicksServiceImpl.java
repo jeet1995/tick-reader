@@ -14,6 +14,8 @@ import com.tickreader.service.TicksService;
 import com.tickreader.service.strategy.ErrorHandlingStrategy;
 import com.tickreader.service.strategy.RetryOnSpecificExceptionStrategy;
 import com.tickreader.service.utils.TickServiceUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -24,10 +26,14 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.PriorityQueue;
+import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 @Service
 public class TicksServiceImpl implements TicksService {
+
+    private final static Logger logger = LoggerFactory.getLogger(TicksServiceImpl.class);
 
     private final RicBasedCosmosClientFactory clientFactory;
     private final RicMappingProperties ricMappingProperties;
@@ -42,15 +48,20 @@ public class TicksServiceImpl implements TicksService {
     @Override
     public List<Tick> getTicks(List<String> rics, int totalTicks, boolean pinStart, LocalDateTime startTime, LocalDateTime endTime) {
 
+        LocalDateTime newStartTime, newEndTime;
+
+        newStartTime = startTime.isAfter(endTime) ? endTime : startTime;
+        newEndTime = endTime.isBefore(startTime) ? startTime : endTime;
+
         List<String> datesInBetween
-                = TickServiceUtils.getLocalDatesBetweenTwoLocalDateTimes(startTime, endTime);
+                = TickServiceUtils.getLocalDatesBetweenTwoLocalDateTimes(newStartTime, newEndTime);
 
         RicCosmosProperties ricCosmosProperties
                 = this.clientFactory.getRicCosmosProperties();
 
         List<TickRequestContext> tickRequestContexts = new ArrayList<>();
 
-        PriorityQueue<Tick> orderedTicks = new PriorityQueue<>((t1, t2) -> {
+        PriorityBlockingQueue<Tick> orderedTicks = new PriorityBlockingQueue<>(100, (t1, t2) -> {
 
             if (t1.getExecutionTime().equals(t2.getExecutionTime())) {
                 return 0;
@@ -63,12 +74,15 @@ public class TicksServiceImpl implements TicksService {
             }
         });
 
+        AtomicInteger totalTicksCountWithNonNullContinuation = new AtomicInteger(0);
+
         for (String ric : rics) {
             for (String date : datesInBetween) {
                 RicGroupMappingContext ricGroup = this.ricMappingProperties.getMappedRicGroup(ric);
                 CosmosAsyncClient asyncClient = this.clientFactory.getCosmosAsyncClient(ricGroup.getRicGroupId());
 
                 if (asyncClient == null) {
+                    logger.warn("CosmosAsyncClient instance not found for ric: {}", ric);
                     continue;
                 }
 
@@ -76,6 +90,7 @@ public class TicksServiceImpl implements TicksService {
                         = ricCosmosProperties.getRicCosmosProperties(ricGroup.getRicGroupId()).getDatabaseId();
 
                 if (databaseId == null || databaseId.isEmpty()) {
+                    logger.warn("Ric {} and Ric group {} does not have a database ID", ric, ricGroup.getRicGroupId());
                     continue;
                 }
 
@@ -89,14 +104,25 @@ public class TicksServiceImpl implements TicksService {
                     String tickIdentifier = TickServiceUtils.constructTickIdentifier(ric, date, i);
 
                     TickRequestContext tickRequestContext = new TickRequestContext(
-                            asyncContainer, tickIdentifier);
+                            asyncContainer,
+                            tickIdentifier,
+                            totalTicksCountWithNonNullContinuation);
 
                     tickRequestContexts.add(tickRequestContext);
                 }
             }
         }
 
-        return executeQueryUntilTopN(tickRequestContexts, startTime, endTime, pinStart, orderedTicks, totalTicks).blockLast();
+        totalTicksCountWithNonNullContinuation.set(tickRequestContexts.size());
+
+        return executeQueryUntilTopN(
+                tickRequestContexts,
+                newStartTime,
+                newEndTime,
+                pinStart,
+                orderedTicks,
+                totalTicks)
+        .blockLast();
     }
 
     private Flux<List<Tick>> executeQueryUntilTopN(
@@ -104,19 +130,31 @@ public class TicksServiceImpl implements TicksService {
             LocalDateTime startTime,
             LocalDateTime endTime,
             boolean pinStart,
-            PriorityQueue<Tick> orderedTicks,
+            PriorityBlockingQueue<Tick> orderedTicks,
             int totalTicks) {
 
         Object lock = new Object();
 
         Flux<Flux<List<Tick>>> generator = Flux.generate(Flux::empty,
                 (state, sink) -> {
+
+                    if (tickRequestContexts.isEmpty()) {
+                        sink.complete();
+                        return state;
+                    }
+
+                    if (tickRequestContexts.get(0).getGlobalTickCountWithNonNullContinuationToken() <= 0) {
+                        sink.complete();
+                        return state;
+                    }
+
                     if (orderedTicks.size() < totalTicks) {
                         Flux<List<Tick>> response = Flux.defer(() -> bufferedAndOrderedFetcher(tickRequestContexts, orderedTicks, startTime, endTime, pinStart, totalTicks, lock));
                         sink.next(response);
-                    } else {
+                    } else if (orderedTicks.size() == totalTicks) {
                         sink.complete();
                     }
+
                     return state;
                 });
 
@@ -182,7 +220,10 @@ public class TicksServiceImpl implements TicksService {
                     if (throwable instanceof CosmosException) {
                         CosmosException cosmosException = (CosmosException) throwable;
 
-                        if (TickServiceUtils.isOwnerResourceNotFound(cosmosException)) {
+                        if (TickServiceUtils.isResourceNotFound(cosmosException)) {
+                            logger.warn("Ric with associated ID {} does not exist for day : {}", tickRequestContext.getTickIdentifier(), asyncContainer.getId());
+                            tickRequestContext.setContinuationToken(null);
+                            tickRequestContext.decrementGlobalTickCountWithNonNullContinuationToken();
                             return Flux.empty();
                         }
                     }
@@ -192,13 +233,17 @@ public class TicksServiceImpl implements TicksService {
                 .flatMap(page -> {
                     tickRequestContext.setContinuationToken(page.getContinuationToken());
 
+                    if (page.getContinuationToken() == null) {
+                        tickRequestContext.decrementGlobalTickCountWithNonNullContinuationToken();
+                    }
+
                     return Flux.fromIterable(page.getResults());
                 }, 1, 1);
     }
 
     private Flux<List<Tick>> bufferedAndOrderedFetcher(
             List<TickRequestContext> tickRequestContexts,
-            PriorityQueue<Tick> orderedTicks,
+            PriorityBlockingQueue<Tick> orderedTicks,
             LocalDateTime startTime,
             LocalDateTime endTime,
             boolean pinStart,

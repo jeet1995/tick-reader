@@ -29,7 +29,7 @@ public final class TickServiceUtils {
         return String.format("%s|%s|%d", ric, date, shard);
     }
 
-    public static boolean isOwnerResourceNotFound(CosmosException e) {
-        return e.getStatusCode() == 404 && e.getSubStatusCode() == 1013;
+    public static boolean isResourceNotFound(CosmosException e) {
+        return e.getStatusCode() == 404 && e.getSubStatusCode() == 0;
     }
 }
