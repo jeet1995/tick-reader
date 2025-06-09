@@ -1,5 +1,7 @@
 package com.tickreader.service.utils;
 
+import com.azure.cosmos.CosmosException;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -25,5 +27,9 @@ public final class TickServiceUtils {
 
     public static String constructTickIdentifier(String ric, String date, int shard) {
         return String.format("%s|%s|%d", ric, date, shard);
+    }
+
+    public static boolean isOwnerResourceNotFound(CosmosException e) {
+        return e.getStatusCode() == 404 && e.getSubStatusCode() == 1013;
     }
 }

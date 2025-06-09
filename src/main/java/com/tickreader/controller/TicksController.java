@@ -21,7 +21,7 @@ public class TicksController {
         this.ticksService = ticksService;
     }
 
-    @GetMapping("")
+    @GetMapping("?sort=messageTimestamp")
     public List<Tick> getTicks(
             @RequestParam List<String> rics,
             @RequestParam int totalTicks,

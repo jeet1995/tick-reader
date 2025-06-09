@@ -2,6 +2,7 @@ package com.tickreader.service.impl;
 
 import com.azure.cosmos.CosmosAsyncClient;
 import com.azure.cosmos.CosmosAsyncContainer;
+import com.azure.cosmos.CosmosException;
 import com.azure.cosmos.models.SqlParameter;
 import com.azure.cosmos.models.SqlQuerySpec;
 import com.tickreader.config.RicBasedCosmosClientFactory;
@@ -10,6 +11,8 @@ import com.tickreader.config.RicGroupMappingContext;
 import com.tickreader.config.RicMappingProperties;
 import com.tickreader.entity.Tick;
 import com.tickreader.service.TicksService;
+import com.tickreader.service.strategy.ErrorHandlingStrategy;
+import com.tickreader.service.strategy.RetryOnSpecificExceptionStrategy;
 import com.tickreader.service.utils.TickServiceUtils;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -29,10 +32,12 @@ public class TicksServiceImpl implements TicksService {
 
     private final RicBasedCosmosClientFactory clientFactory;
     private final RicMappingProperties ricMappingProperties;
+    private final ErrorHandlingStrategy errorHandlingStrategy;
 
     public TicksServiceImpl(RicBasedCosmosClientFactory clientFactory, RicMappingProperties ricMappingProperties) {
         this.clientFactory = clientFactory;
         this.ricMappingProperties = ricMappingProperties;
+        this.errorHandlingStrategy = new RetryOnSpecificExceptionStrategy();
     }
 
     @Override
@@ -103,18 +108,18 @@ public class TicksServiceImpl implements TicksService {
             PriorityQueue<Tick> orderedTicks,
             int totalTicks) {
 
-        ConcurrentHashMap<String, String> ids = new ConcurrentHashMap<>();
+        Object lock = new Object();
 
         Flux<Flux<List<Tick>>> generator = Flux.generate(Flux::empty,
                 (state, sink) -> {
-            if (orderedTicks.size() < totalTicks) {
-                Flux<List<Tick>> response = Flux.defer(() -> bufferedAndOrderedFetcher(tickRequestContexts, orderedTicks, startTime, endTime, pinStart, totalTicks, ids));
-                sink.next(response);
-            } else {
-                sink.complete();
-            }
-            return state;
-        });
+                    if (orderedTicks.size() < totalTicks) {
+                        Flux<List<Tick>> response = Flux.defer(() -> bufferedAndOrderedFetcher(tickRequestContexts, orderedTicks, startTime, endTime, pinStart, totalTicks, lock));
+                        sink.next(response);
+                    } else {
+                        sink.complete();
+                    }
+                    return state;
+                });
 
         return generator.flatMapSequential(flux -> flux, 1, 1);
     }
@@ -154,8 +159,7 @@ public class TicksServiceImpl implements TicksService {
             TickRequestContext tickRequestContext,
             LocalDateTime startTime,
             LocalDateTime endTime,
-            boolean pinStart,
-            ConcurrentHashMap<String, String> ids) {
+            boolean pinStart) {
 
         CosmosAsyncContainer asyncContainer = tickRequestContext.getAsyncContainer();
 
@@ -172,34 +176,49 @@ public class TicksServiceImpl implements TicksService {
         String continuationToken = tickRequestContext.getContinuationToken();
 
         return Flux.defer(() -> asyncContainer
-                .queryItems(querySpec, Tick.class)
-                .byPage(continuationToken, 10))
+                        .queryItems(querySpec, Tick.class)
+                        .byPage(continuationToken, 10))
+                .onErrorResume(throwable -> {
+
+                    if (throwable instanceof CosmosException) {
+                        CosmosException cosmosException = (CosmosException) throwable;
+
+                        if (TickServiceUtils.isOwnerResourceNotFound(cosmosException)) {
+                            return Flux.empty();
+                        }
+                    }
+
+                    return Flux.error(throwable);
+                })
                 .flatMap(page -> {
                     tickRequestContext.setContinuationToken(page.getContinuationToken());
-
-                    for (Tick tick : page.getResults()) {
-                        ids.put(tick.getId(), tick.getId());
-                    }
 
                     return Flux.fromIterable(page.getResults());
                 }, 1, 1);
     }
 
-    private Flux<List<Tick>> bufferedAndOrderedFetcher(List<TickRequestContext> tickRequestContexts, PriorityQueue<Tick> orderedTicks, LocalDateTime startTime, LocalDateTime endTime, boolean pinStart, int totalTicks, ConcurrentHashMap<String, String> ids) {
+    private Flux<List<Tick>> bufferedAndOrderedFetcher(
+            List<TickRequestContext> tickRequestContexts,
+            PriorityQueue<Tick> orderedTicks,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            boolean pinStart,
+            int totalTicks,
+            Object lock) {
 
         List<Flux<Tick>> tickQueryFluxes = tickRequestContexts.stream()
-                .map(tickRequestContext -> Flux.defer(() -> executeQuery(tickRequestContext, startTime, endTime, pinStart, ids)))
+                .map(tickRequestContext -> Flux.defer(() -> executeQuery(tickRequestContext, startTime, endTime, pinStart)))
                 .collect(Collectors.toList());
 
         @SuppressWarnings("unchecked")
         Flux<Tick>[] tickQueryFluxArray = tickQueryFluxes.toArray(new Flux[0]);
 
-        return Flux.defer(() -> Flux.mergeComparingDelayError(1, orderedTicks.comparator(), tickQueryFluxArray))
+        Flux<List<Tick>> sourceFlux = Flux.defer(() -> Flux.mergeComparingDelayError(1, orderedTicks.comparator(), tickQueryFluxArray))
                 .buffer(100)
                 .flatMap(o -> {
 
                     if (o != null) {
-                        synchronized (this) {
+                        synchronized (lock) {
 
                             int idx = 0;
 
@@ -213,5 +232,7 @@ public class TicksServiceImpl implements TicksService {
                     return Mono.just(orderedTicks.stream().toList());
                 }, 1, 1)
                 .take(1);
+
+        return errorHandlingStrategy.apply(sourceFlux);
     }
 }
