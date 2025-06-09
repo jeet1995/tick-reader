@@ -1,0 +1,1 @@
+GET http://localhost:8080/ticks?rics=MSFT,GOOGL,AAPL&totalTicks=266&pinStart=true&startTime=2025-06-06T00:00:00&endTime=2025-06-06T23:59:59

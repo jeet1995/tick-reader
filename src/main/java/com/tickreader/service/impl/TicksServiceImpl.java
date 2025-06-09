@@ -6,6 +6,7 @@ import com.azure.cosmos.models.SqlParameter;
 import com.azure.cosmos.models.SqlQuerySpec;
 import com.tickreader.config.RicBasedCosmosClientFactory;
 import com.tickreader.config.RicCosmosProperties;
+import com.tickreader.config.RicGroupMappingContext;
 import com.tickreader.config.RicMappingProperties;
 import com.tickreader.entity.Tick;
 import com.tickreader.service.TicksService;
@@ -16,9 +17,11 @@ import reactor.core.publisher.Mono;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.PriorityQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -45,28 +48,28 @@ public class TicksServiceImpl implements TicksService {
 
         PriorityQueue<Tick> orderedTicks = new PriorityQueue<>((t1, t2) -> {
 
-            if (t1.getMessageTimestamp() == t2.getMessageTimestamp()) {
+            if (t1.getExecutionTime().equals(t2.getExecutionTime())) {
                 return 0;
             }
 
             if (pinStart) {
-                return t2.getMessageTimestamp() < t1.getMessageTimestamp() ? 1 : -1;
+                return t1.getExecutionTime() > t2.getExecutionTime() ? -1 : 1;
             } else {
-                return t2.getMessageTimestamp() < t1.getMessageTimestamp() ? -1 : 1;
+                return t1.getExecutionTime() > t2.getExecutionTime() ? 1 : -1;
             }
         });
 
         for (String ric : rics) {
             for (String date : datesInBetween) {
-                String ricGroup = this.ricMappingProperties.getMappedRicGroup(ric);
-                CosmosAsyncClient asyncClient = this.clientFactory.getCosmosAsyncClient(ricGroup);
+                RicGroupMappingContext ricGroup = this.ricMappingProperties.getMappedRicGroup(ric);
+                CosmosAsyncClient asyncClient = this.clientFactory.getCosmosAsyncClient(ricGroup.getRicGroupId());
 
                 if (asyncClient == null) {
                     continue;
                 }
 
                 String databaseId
-                        = ricCosmosProperties.getRicCosmosProperties(ricGroup).getDatabaseId();
+                        = ricCosmosProperties.getRicCosmosProperties(ricGroup.getRicGroupId()).getDatabaseId();
 
                 if (databaseId == null || databaseId.isEmpty()) {
                     continue;
@@ -89,9 +92,7 @@ public class TicksServiceImpl implements TicksService {
             }
         }
 
-        executeQueryUntilTopN(tickRequestContexts, startTime, endTime, pinStart, orderedTicks, totalTicks).blockFirst();
-
-        return orderedTicks.stream().limit(totalTicks).collect(Collectors.toList());
+        return executeQueryUntilTopN(tickRequestContexts, startTime, endTime, pinStart, orderedTicks, totalTicks).blockLast();
     }
 
     private Flux<List<Tick>> executeQueryUntilTopN(
@@ -102,36 +103,20 @@ public class TicksServiceImpl implements TicksService {
             PriorityQueue<Tick> orderedTicks,
             int totalTicks) {
 
-        List<Flux<Tick>> tickQueryFluxes = tickRequestContexts.stream()
-                .map(tickRequestContext -> Flux.defer(() -> executeQuery(tickRequestContext, startTime, endTime, pinStart)))
-                .collect(Collectors.toList());
+        ConcurrentHashMap<String, String> ids = new ConcurrentHashMap<>();
 
-        @SuppressWarnings("unchecked")
-        Flux<Tick>[] tickQueryFluxArray = tickQueryFluxes.toArray(new Flux[0]);
+        Flux<Flux<List<Tick>>> generator = Flux.generate(Flux::empty,
+                (state, sink) -> {
+            if (orderedTicks.size() < totalTicks) {
+                Flux<List<Tick>> response = Flux.defer(() -> bufferedAndOrderedFetcher(tickRequestContexts, orderedTicks, startTime, endTime, pinStart, totalTicks, ids));
+                sink.next(response);
+            } else {
+                sink.complete();
+            }
+            return state;
+        });
 
-        return Flux.defer(() -> Flux.mergeComparingDelayError(1, orderedTicks.comparator(), tickQueryFluxArray))
-                .repeat(() -> {
-
-                    if (orderedTicks.size() == totalTicks) {
-                        return true;
-                    }
-
-                    for (TickRequestContext tickRequestContext : tickRequestContexts) {
-                        if (tickRequestContext.getContinuationToken() != null) {
-                            return false;
-                        }
-                    }
-
-                    return true;
-                }).flatMap(o -> {
-                    if (o != null) {
-                        synchronized (this) {
-                            orderedTicks.offer(o);
-                        }
-                    }
-
-                    return Mono.just(orderedTicks.stream().toList());
-                });
+        return generator.flatMapSequential(flux -> flux, 1, 1);
     }
 
     private SqlQuerySpec getSqlQuerySpec(
@@ -143,8 +128,8 @@ public class TicksServiceImpl implements TicksService {
 
         LocalDate localDate = LocalDate.parse(containerId);
 
-        String queryStartTime = !startTime.isBefore(localDate.atStartOfDay()) ? startTime.toString() : localDate.atStartOfDay().toString();
-        String queryEndTime = !endTime.isAfter(localDate.atTime(23, 59, 59)) ? endTime.toString() : localDate.atTime(23, 59, 59).toString();
+        long queryStartTime = !startTime.isBefore(localDate.atStartOfDay()) ? startTime.toEpochSecond(ZoneOffset.UTC) : localDate.atStartOfDay().toEpochSecond(ZoneOffset.UTC);
+        long queryEndTime = !endTime.isAfter(localDate.atTime(23, 59, 59)) ? endTime.toEpochSecond(ZoneOffset.UTC) : localDate.atTime(23, 59, 59).toEpochSecond(ZoneOffset.UTC);
 
         List<SqlParameter> parameters = new ArrayList<>();
 
@@ -154,18 +139,23 @@ public class TicksServiceImpl implements TicksService {
 
         if (pinStart) {
             String query = "SELECT * FROM C WHERE C.pk = @tickIdentifier " +
-                    "AND C.timestamp >= @startTime AND C.timestamp <= @endTime ORDER BY C.timestamp DESC";
+                    "AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.executionTime DESC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
             String query = "SELECT * FROM C WHERE C.pk = @tickIdentifier " +
-                    "AND C.timestamp >= @startTime AND C.timestamp <= @endTime ORDER BY C.timestamp ASC";
+                    "AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.executionTime ASC";
 
             return new SqlQuerySpec(query, parameters);
         }
     }
 
-    private Flux<Tick> executeQuery(TickRequestContext tickRequestContext, LocalDateTime startTime, LocalDateTime endTime, boolean pinStart) {
+    private Flux<Tick> executeQuery(
+            TickRequestContext tickRequestContext,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            boolean pinStart,
+            ConcurrentHashMap<String, String> ids) {
 
         CosmosAsyncContainer asyncContainer = tickRequestContext.getAsyncContainer();
 
@@ -183,10 +173,45 @@ public class TicksServiceImpl implements TicksService {
 
         return Flux.defer(() -> asyncContainer
                 .queryItems(querySpec, Tick.class)
-                .byPage(continuationToken, 100))
+                .byPage(continuationToken, 10))
                 .flatMap(page -> {
                     tickRequestContext.setContinuationToken(page.getContinuationToken());
+
+                    for (Tick tick : page.getResults()) {
+                        ids.put(tick.getId(), tick.getId());
+                    }
+
                     return Flux.fromIterable(page.getResults());
-                });
+                }, 1, 1);
+    }
+
+    private Flux<List<Tick>> bufferedAndOrderedFetcher(List<TickRequestContext> tickRequestContexts, PriorityQueue<Tick> orderedTicks, LocalDateTime startTime, LocalDateTime endTime, boolean pinStart, int totalTicks, ConcurrentHashMap<String, String> ids) {
+
+        List<Flux<Tick>> tickQueryFluxes = tickRequestContexts.stream()
+                .map(tickRequestContext -> Flux.defer(() -> executeQuery(tickRequestContext, startTime, endTime, pinStart, ids)))
+                .collect(Collectors.toList());
+
+        @SuppressWarnings("unchecked")
+        Flux<Tick>[] tickQueryFluxArray = tickQueryFluxes.toArray(new Flux[0]);
+
+        return Flux.defer(() -> Flux.mergeComparingDelayError(1, orderedTicks.comparator(), tickQueryFluxArray))
+                .buffer(100)
+                .flatMap(o -> {
+
+                    if (o != null) {
+                        synchronized (this) {
+
+                            int idx = 0;
+
+                            while (orderedTicks.size() < totalTicks && idx < 100) {
+                                orderedTicks.offer(o.get(idx));
+                                idx++;
+                            }
+                        }
+                    }
+
+                    return Mono.just(orderedTicks.stream().toList());
+                }, 1, 1)
+                .take(1);
     }
 }

@@ -6,20 +6,20 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 @Component
-@ConfigurationProperties(prefix = "ric.mapping")
+@ConfigurationProperties(prefix = "ric")
 public class RicMappingProperties {
 
-    private Map<String, String> mappings;
+    private Map<String, RicGroupMappingContext> mappings;
 
-    public Map<String, String> getMappings() {
+    public Map<String, RicGroupMappingContext> getMappings() {
         return this.mappings;
     }
 
-    public void setMappings(Map<String, String> mappings) {
+    public void setMappings(Map<String, RicGroupMappingContext> mappings) {
         this.mappings = mappings;
     }
 
-    public String getMappedRicGroup(String ric) {
-        return mappings.getOrDefault(ric, ric);
+    public RicGroupMappingContext getMappedRicGroup(String ric) {
+        return mappings.get(ric);
     }
 }

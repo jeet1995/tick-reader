@@ -8,7 +8,15 @@ ric:
         uri: https://abhm-cosmos-single-write.documents.azure.com:443/
         databaseId: ric_database
     shardCount: 8
-  mapping:
-    MSFT: ricGroup1
-    AAPL: ricGroup2
-    GOOG: ricGroup1
+  mappings:
+    MSFT:
+      ricName: MSFT
+      ricGroupId: ricGroup1
+    AAPL:
+      ricName: AAPL
+      ricGroupId: ricGroup2
+    GOOGL:
+      ricName: GOOGL
+      ricGroupId: ricGroup2
+
+
