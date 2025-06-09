@@ -5,10 +5,13 @@ import com.azure.cosmos.CosmosAsyncContainer;
 import com.azure.cosmos.CosmosException;
 import com.azure.cosmos.models.SqlParameter;
 import com.azure.cosmos.models.SqlQuerySpec;
+import com.tickreader.config.Configs;
 import com.tickreader.config.RicBasedCosmosClientFactory;
 import com.tickreader.config.RicCosmosProperties;
 import com.tickreader.config.RicGroupMappingContext;
 import com.tickreader.config.RicMappingProperties;
+import com.tickreader.dto.TickContinuation;
+import com.tickreader.dto.TickResponse;
 import com.tickreader.entity.Tick;
 import com.tickreader.service.TicksService;
 import com.tickreader.service.strategy.ErrorHandlingStrategy;
@@ -25,7 +28,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.PriorityQueue;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -46,7 +48,12 @@ public class TicksServiceImpl implements TicksService {
     }
 
     @Override
-    public List<Tick> getTicks(List<String> rics, int totalTicks, boolean pinStart, LocalDateTime startTime, LocalDateTime endTime) {
+    public TickResponse getTicks(
+            List<String> rics,
+            int totalTicks,
+            boolean pinStart,
+            LocalDateTime startTime,
+            LocalDateTime endTime) {
 
         LocalDateTime newStartTime, newEndTime;
 
@@ -115,7 +122,7 @@ public class TicksServiceImpl implements TicksService {
 
         totalTicksCountWithNonNullContinuation.set(tickRequestContexts.size());
 
-        return executeQueryUntilTopN(
+        List<Tick> ticks = executeQueryUntilTopN(
                 tickRequestContexts,
                 newStartTime,
                 newEndTime,
@@ -123,6 +130,15 @@ public class TicksServiceImpl implements TicksService {
                 orderedTicks,
                 totalTicks)
         .blockLast();
+
+        List<TickContinuation> tickContinuations = tickRequestContexts.stream()
+                .map(tickRequestContext -> new TickContinuation(
+                        tickRequestContext.getAsyncContainer().getId(),
+                        tickRequestContext.getContinuationToken(),
+                        tickRequestContext.getTickIdentifier()))
+                .collect(Collectors.toList());
+
+        return new TickResponse(ticks, tickContinuations);
     }
 
     private Flux<List<Tick>> executeQueryUntilTopN(
@@ -133,8 +149,6 @@ public class TicksServiceImpl implements TicksService {
             PriorityBlockingQueue<Tick> orderedTicks,
             int totalTicks) {
 
-        Object lock = new Object();
-
         Flux<Flux<List<Tick>>> generator = Flux.generate(Flux::empty,
                 (state, sink) -> {
 
@@ -143,13 +157,29 @@ public class TicksServiceImpl implements TicksService {
                         return state;
                     }
 
-                    if (tickRequestContexts.get(0).getGlobalTickCountWithNonNullContinuationToken() <= 0) {
+                    boolean isQueryDrained = true;
+
+                    for (TickRequestContext tickRequestContext : tickRequestContexts) {
+
+                        if (tickRequestContext.getContinuationToken() == null) {
+                            isQueryDrained = false;
+                            break;
+                        }
+
+                        if (!tickRequestContext.getContinuationToken().equals("drained")) {
+                            isQueryDrained = false;
+                            break;
+                        }
+                    }
+
+                    if (isQueryDrained) {
                         sink.complete();
                         return state;
                     }
 
                     if (orderedTicks.size() < totalTicks) {
-                        Flux<List<Tick>> response = Flux.defer(() -> bufferedAndOrderedFetcher(tickRequestContexts, orderedTicks, startTime, endTime, pinStart, totalTicks, lock));
+                        Flux<List<Tick>> response = Flux.defer(() -> bufferedAndOrderedFetcher(
+                                tickRequestContexts, orderedTicks, startTime, endTime, pinStart, totalTicks));
                         sink.next(response);
                     } else if (orderedTicks.size() == totalTicks) {
                         sink.complete();
@@ -212,6 +242,10 @@ public class TicksServiceImpl implements TicksService {
 
         String continuationToken = tickRequestContext.getContinuationToken();
 
+        if (continuationToken != null && continuationToken.equals("drained")) {
+            return Flux.empty();
+        }
+
         return Flux.defer(() -> asyncContainer
                         .queryItems(querySpec, Tick.class)
                         .byPage(continuationToken, 10))
@@ -222,8 +256,7 @@ public class TicksServiceImpl implements TicksService {
 
                         if (TickServiceUtils.isResourceNotFound(cosmosException)) {
                             logger.warn("Ric with associated ID {} does not exist for day : {}", tickRequestContext.getTickIdentifier(), asyncContainer.getId());
-                            tickRequestContext.setContinuationToken(null);
-                            tickRequestContext.decrementGlobalTickCountWithNonNullContinuationToken();
+                            tickRequestContext.setContinuationToken("drained");
                             return Flux.empty();
                         }
                     }
@@ -234,7 +267,7 @@ public class TicksServiceImpl implements TicksService {
                     tickRequestContext.setContinuationToken(page.getContinuationToken());
 
                     if (page.getContinuationToken() == null) {
-                        tickRequestContext.decrementGlobalTickCountWithNonNullContinuationToken();
+                        tickRequestContext.setContinuationToken("drained");
                     }
 
                     return Flux.fromIterable(page.getResults());
@@ -247,8 +280,7 @@ public class TicksServiceImpl implements TicksService {
             LocalDateTime startTime,
             LocalDateTime endTime,
             boolean pinStart,
-            int totalTicks,
-            Object lock) {
+            int totalTicks) {
 
         List<Flux<Tick>> tickQueryFluxes = tickRequestContexts.stream()
                 .map(tickRequestContext -> Flux.defer(() -> executeQuery(tickRequestContext, startTime, endTime, pinStart)))
@@ -262,14 +294,12 @@ public class TicksServiceImpl implements TicksService {
                 .flatMap(o -> {
 
                     if (o != null) {
-                        synchronized (lock) {
+                        int idx = 0;
+                        int maxSize = o.size();
 
-                            int idx = 0;
-
-                            while (orderedTicks.size() < totalTicks && idx < 100) {
-                                orderedTicks.offer(o.get(idx));
-                                idx++;
-                            }
+                        while (orderedTicks.size() < totalTicks && idx < maxSize) {
+                            orderedTicks.offer(o.get(idx));
+                            idx++;
                         }
                     }
 

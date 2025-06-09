@@ -1,5 +1,6 @@
 package com.tickreader.controller;
 
+import com.tickreader.dto.TickResponse;
 import com.tickreader.entity.Tick;
 import com.tickreader.service.TicksService;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -21,8 +22,8 @@ public class TicksController {
         this.ticksService = ticksService;
     }
 
-    @GetMapping("")
-    public List<Tick> getTicks(
+    @GetMapping("/sort=messageTimestamp")
+    public TickResponse getTicks(
             @RequestParam List<String> rics,
             @RequestParam int totalTicks,
             @RequestParam boolean pinStart,

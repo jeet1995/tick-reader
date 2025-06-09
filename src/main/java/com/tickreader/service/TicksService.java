@@ -1,12 +1,12 @@
 package com.tickreader.service;
 
-import com.tickreader.entity.Tick;
+import com.tickreader.dto.TickResponse;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 public interface TicksService {
-    List<Tick> getTicks(
+    TickResponse getTicks(
             List<String> rics,
             int totalTicks,
             boolean pinStart,
