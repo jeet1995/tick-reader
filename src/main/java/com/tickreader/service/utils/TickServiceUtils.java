@@ -4,6 +4,7 @@ import com.azure.cosmos.CosmosException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -11,14 +12,14 @@ public final class TickServiceUtils {
 
     private TickServiceUtils() {}
 
-    public static List<String> getLocalDatesBetweenTwoLocalDateTimes(LocalDateTime startTime, LocalDateTime endTime) {
+    public static List<String> getLocalDatesBetweenTwoLocalDateTimes(LocalDateTime startTime, LocalDateTime endTime, String format) {
         List<String> dates = new ArrayList<>();
 
         LocalDate current = startTime.toLocalDate();
         LocalDate endDate = endTime.toLocalDate();
 
         while (!current.isAfter(endDate)) {
-            dates.add(current.toString()); // ISO format: yyyy-MM-dd
+            dates.add(current.format(DateTimeFormatter.ofPattern(format)));
             current = current.plusDays(1);
         }
 

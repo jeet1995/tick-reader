@@ -1,22 +1,17 @@
-ric:
-  cosmos:
-    rics:
-      ricGroup1:
-        uri: ${ricGroup1.databaseAccount}
-        databaseId: ric_database
-      ricGroup2:
-        uri: ${ricGroup2.databaseAccount}
-        databaseId: ric_database
-    shardCount: 8
-  mappings:
-    MSFT:
-      ricName: MSFT
-      ricGroupId: ricGroup1
-    AAPL:
-      ricName: AAPL
-      ricGroupId: ricGroup2
-    GOOGL:
-      ricName: GOOGL
-      ricGroupId: ricGroup2
-
-
+ticks:
+  cosmosDbAccounts:
+    1:
+      databaseName: ${DATABASE_NAME_HASH_1}
+      accountUri: ${COSMOSDB_ACCOUNT_URI_HASH_1}
+      containerNamePrefix: "container_"
+      containerNameFormat: "yyyyMMdd"
+      containerNameSuffix: "y"
+      hashId: 1
+    2:
+      databaseName: ${DATABASE_NAME_HASH_2}
+      accountUri: ${COSMOSDB_ACCOUNT_URI_HASH_2}
+      containerNamePrefix: "container_"
+      containerNameFormat: "yyyyMMdd"
+      containerNameSuffix: "y"
+      hashId: 2
+  shardCountPerRic: 8

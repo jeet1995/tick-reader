@@ -2,22 +2,25 @@ package com.tickreader.service.impl;
 
 import com.azure.cosmos.CosmosAsyncContainer;
 import com.azure.cosmos.models.SqlQuerySpec;
+import org.apache.spark.sql.execution.command.LoadDataCommand$;
 
-import java.util.concurrent.atomic.AtomicInteger;
+import java.time.LocalDate;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class TickRequestContext {
 
     private final CosmosAsyncContainer asyncContainer;
     private final String tickIdentifier;
+    private final String requestDateAsString;
+    private final String dateFormat;
     private final AtomicReference<String> continuationToken = new AtomicReference<>();
     private final AtomicReference<SqlQuerySpec> sqlQuerySpec = new AtomicReference<>();
-    private final AtomicInteger globalTickCountWithNonNullContinuationToken;
 
-    public TickRequestContext(CosmosAsyncContainer asyncContainer, String tickIdentifier, AtomicInteger globalTickCountWithNonNullContinuationToken) {
+    public TickRequestContext(CosmosAsyncContainer asyncContainer, String tickIdentifier, String requestDateAsString, String dateFormat) {
         this.asyncContainer = asyncContainer;
         this.tickIdentifier = tickIdentifier;
-        this.globalTickCountWithNonNullContinuationToken = globalTickCountWithNonNullContinuationToken;
+        this.requestDateAsString = requestDateAsString;
+        this.dateFormat = dateFormat;
     }
 
     public CosmosAsyncContainer getAsyncContainer() {
@@ -44,13 +47,11 @@ public class TickRequestContext {
         this.sqlQuerySpec.set(sqlQuerySpec);
     }
 
-    public void decrementGlobalTickCountWithNonNullContinuationToken() {
-        if (this.globalTickCountWithNonNullContinuationToken.get() > 0) {
-            this.globalTickCountWithNonNullContinuationToken.decrementAndGet();
-        }
+    public String getRequestDateAsString() {
+        return this.requestDateAsString;
     }
 
-    public int getGlobalTickCountWithNonNullContinuationToken() {
-        return this.globalTickCountWithNonNullContinuationToken.get();
+    public String getDateFormat() {
+        return this.dateFormat;
     }
 }
