@@ -42,10 +42,12 @@
             <artifactId>azure-cosmos</artifactId>
             <version>LATEST</version>
         </dependency>
+        <!-- https://mvnrepository.com/artifact/org.apache.spark/spark-sql -->
         <dependency>
             <groupId>org.apache.spark</groupId>
-            <artifactId>spark-sql_2.12</artifactId>
-            <version>3.5.1</version>
+            <artifactId>spark-sql_2.13</artifactId>
+            <version>4.0.0</version>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 

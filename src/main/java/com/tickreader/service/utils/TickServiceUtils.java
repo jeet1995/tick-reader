@@ -26,8 +26,8 @@ public final class TickServiceUtils {
         return dates;
     }
 
-    public static String constructTickIdentifier(String ric, String date, int shard) {
-        return String.format("%s|%s|%d", ric, date, shard);
+    public static String constructTickIdentifierPrefix(String ric, String date) {
+        return String.format("%s|%s", ric, date);
     }
 
     public static boolean isResourceNotFound(CosmosException e) {

@@ -1,10 +1,14 @@
 package com.tickreader.service.impl;
 
 import com.azure.cosmos.CosmosAsyncContainer;
+import com.azure.cosmos.CosmosDiagnosticsContext;
 import com.azure.cosmos.models.SqlQuerySpec;
 import org.apache.spark.sql.execution.command.LoadDataCommand$;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class TickRequestContext {
@@ -15,6 +19,7 @@ public class TickRequestContext {
     private final String dateFormat;
     private final AtomicReference<String> continuationToken = new AtomicReference<>();
     private final AtomicReference<SqlQuerySpec> sqlQuerySpec = new AtomicReference<>();
+    private final CopyOnWriteArrayList<CosmosDiagnosticsContext> diagnosticsContexts = new CopyOnWriteArrayList<>();
 
     public TickRequestContext(CosmosAsyncContainer asyncContainer, String tickIdentifier, String requestDateAsString, String dateFormat) {
         this.asyncContainer = asyncContainer;
@@ -53,5 +58,13 @@ public class TickRequestContext {
 
     public String getDateFormat() {
         return this.dateFormat;
+    }
+
+    public List<CosmosDiagnosticsContext> getDiagnosticsContexts() {
+        return this.diagnosticsContexts;
+    }
+
+    public void addDiagnosticsContext(CosmosDiagnosticsContext diagnosticsContext) {
+        this.diagnosticsContexts.add(diagnosticsContext);
     }
 }

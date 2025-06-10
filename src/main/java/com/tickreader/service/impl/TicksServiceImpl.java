@@ -2,6 +2,7 @@ package com.tickreader.service.impl;
 
 import com.azure.cosmos.CosmosAsyncClient;
 import com.azure.cosmos.CosmosAsyncContainer;
+import com.azure.cosmos.CosmosDiagnosticsContext;
 import com.azure.cosmos.CosmosException;
 import com.azure.cosmos.models.SqlParameter;
 import com.azure.cosmos.models.SqlQuerySpec;
@@ -25,6 +26,8 @@ import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -131,35 +134,28 @@ public class TicksServiceImpl implements TicksService {
                 CosmosAsyncContainer asyncContainer = asyncClient.getDatabase(databaseName)
                         .getContainer(cosmosDbAccount.getContainerNamePrefix() + date + cosmosDbAccount.getContainerNameSuffix());
 
-                int shardCount = this.cosmosDbAccountConfiguration.getShardCountPerRic();
+                String tickIdentifier = TickServiceUtils.constructTickIdentifierPrefix(ric, date);
 
-                for (int i = 1; i <= shardCount; i++) {
+                TickRequestContext tickRequestContext = new TickRequestContext(
+                        asyncContainer,
+                        tickIdentifier,
+                        date,
+                        dateFormat);
 
-                    String tickIdentifier = TickServiceUtils.constructTickIdentifier(ric, date, i);
-
-                    TickRequestContext tickRequestContext = new TickRequestContext(
-                            asyncContainer,
-                            tickIdentifier,
-                            date,
-                            dateFormat);
-
-                    tickRequestContexts.add(tickRequestContext);
-                }
+                tickRequestContexts.add(tickRequestContext);
             }
         }
 
-        List<Tick> ticks = executeQueryUntilTopN(
+        return executeQueryUntilTopN(
                 tickRequestContexts,
                 newStartTime,
                 newEndTime,
                 pinStart,
                 orderedTicks,
                 totalTicks);
-
-        return new TickResponse(ticks);
     }
 
-    private List<Tick> executeQueryUntilTopN(
+    private TickResponse executeQueryUntilTopN(
             List<TickRequestContext> tickRequestContexts,
             LocalDateTime startTime,
             LocalDateTime endTime,
@@ -168,6 +164,9 @@ public class TicksServiceImpl implements TicksService {
             int totalTicks) {
 
         Sinks.Many<List<Tick>> sink = Sinks.many().multicast().onBackpressureBuffer();
+
+        AtomicReference<Instant> executionStartTime = new AtomicReference<>(Instant.MIN);
+        AtomicReference<Instant> executionEndTime = new AtomicReference<>(Instant.MAX);
 
         Flux<Object> dataFlux = Flux.defer(() -> bufferedAndOrderedFetcher(
                 tickRequestContexts, orderedTicks, startTime, endTime, pinStart, totalTicks))
@@ -192,21 +191,35 @@ public class TicksServiceImpl implements TicksService {
 
         AtomicReference<Disposable> queryFluxRef = new AtomicReference<>();
 
-        return sink
+        List<Tick> ticks = sink
                 .asFlux()
                 .publishOn(Schedulers.boundedElastic())
                 .doOnSubscribe(subscription -> {
-                    logger.info("Subscription started for fetching ticks with totalTicks: {}", totalTicks);
+                    logger.debug("Subscription started for fetching ticks with totalTicks: {}", totalTicks);
                     queryFluxRef.set(dataFlux.subscribe());
+                    executionStartTime.set(Instant.now());
                 })
                 .doOnError(throwable -> {
                     logger.error("Error occurred while fetching ticks: {}", throwable.getMessage(), throwable);
                     queryFluxRef.get().dispose();
+                    executionEndTime.set(Instant.now());
                 })
                 .doOnComplete(() -> {
                     queryFluxRef.get().dispose();
-                    logger.info("Flux terminated, disposed of the subscription.");
+                    executionEndTime.set(Instant.now());
+                    logger.debug("Flux terminated, disposed of the subscription.");
                 }).blockLast();
+
+        List<CosmosDiagnosticsContext> diagnosticsContexts = new ArrayList<>();
+
+        for (TickRequestContext tickRequestContext : tickRequestContexts) {
+            diagnosticsContexts.addAll(tickRequestContext.getDiagnosticsContexts());
+        }
+
+        return new TickResponse(
+                ticks,
+                diagnosticsContexts,
+                Duration.between(executionStartTime.get(), executionEndTime.get()));
     }
 
     private SqlQuerySpec getSqlQuerySpec(
@@ -224,18 +237,32 @@ public class TicksServiceImpl implements TicksService {
 
         List<SqlParameter> parameters = new ArrayList<>();
 
-        parameters.add(new SqlParameter("@tickIdentifier", tickIdentifier));
+        StringBuilder sb = new StringBuilder("(");
+
+        for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
+            sb.append("@pk");
+            sb.append(i);
+
+            parameters.add(new SqlParameter("@pk" + i, tickIdentifier + "|" + i));
+
+            if (i < this.cosmosDbAccountConfiguration.getShardCountPerRic()) {
+                sb.append(", ");
+            }
+        }
+
+        sb.append(")");
+
         parameters.add(new SqlParameter("@startTime", queryStartTime));
         parameters.add(new SqlParameter("@endTime", queryEndTime));
 
         if (pinStart) {
-            String query = "SELECT * FROM C WHERE C.pk = @tickIdentifier " +
-                    "AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp DESC";
+            String query = "SELECT * FROM C WHERE C.pk IN " + sb +
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp DESC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
-            String query = "SELECT * FROM C WHERE C.pk = @tickIdentifier " +
-                    "AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp ASC";
+            String query = "SELECT * FROM C WHERE C.pk IN " + sb +
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp ASC";
 
             return new SqlQuerySpec(query, parameters);
         }
@@ -286,6 +313,10 @@ public class TicksServiceImpl implements TicksService {
                 .flatMap(page -> {
                     tickRequestContext.setContinuationToken(page.getContinuationToken());
 
+                    if (page.getCosmosDiagnostics() != null) {
+                        tickRequestContext.addDiagnosticsContext(page.getCosmosDiagnostics().getDiagnosticsContext());
+                    }
+
                     if (page.getContinuationToken() == null) {
                         tickRequestContext.setContinuationToken("drained");
                     }
@@ -309,7 +340,7 @@ public class TicksServiceImpl implements TicksService {
         @SuppressWarnings("unchecked")
         Flux<Tick>[] tickQueryFluxArray = tickQueryFluxes.toArray(new Flux[0]);
 
-        Flux<List<Tick>> sourceFlux = Flux.defer(() -> Flux.mergeComparingDelayError(1, orderedTicks.comparator(), tickQueryFluxArray))
+        Flux<List<Tick>> sourceFlux = Flux.defer(() -> Flux.mergeComparingDelayError(prefetch.get(), orderedTicks.comparator(), tickQueryFluxArray))
                 .flatMap(o -> {
 
                     if (o != null && orderedTicks.size() < totalTicks) {
@@ -317,7 +348,7 @@ public class TicksServiceImpl implements TicksService {
 
                     }
                     return Mono.just(orderedTicks.stream().toList());
-                }, 1, prefetch.get());
+                }, concurrency.get(), prefetch.get());
 
         return errorHandlingStrategy.apply(sourceFlux);
     }
