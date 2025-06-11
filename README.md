@@ -41,7 +41,7 @@ ticks:
 
 ## Container Setup
 
-- Ensure that the Cosmos DB containers are set up with the name `container_<date>` where `<date>` is in the format `yyyyMMdd` and the suffix is `y`. For example, for the date `2024-10-08`, the container name would be `container_20241008y`.
+- Ensure that the Cosmos DB containers are set up with the name `container_<date><suffix>` where `<date>` is in the format `yyyyMMdd` and the `<suffix>` is `y`. For example, for the date `2024-10-08`, the container name would be `container_20241008y`.
 - Ensure that the containers are partitioned by `pk` (partition key) and composite indexed on `messageTimestamp` and `recordKey` for efficient sorting based on both these properties.
 
 ### Composite Index Setup
