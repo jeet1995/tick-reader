@@ -22,13 +22,19 @@ public class RicBasedCosmosClientFactory {
         this.cosmosDbAccountConfiguration = cosmosDbAccountConfiguration;
         this.cosmosDbAccountConfiguration.getCosmosDbAccounts().forEach((key, val) -> {
             try {
-                CosmosAsyncClient client = new CosmosClientBuilder()
+                CosmosClientBuilder cosmosClientBuilder = new CosmosClientBuilder()
                         .endpoint(val.getAccountUri())
                         .credential(Configs.getAadTokenCredential()) // Replace with actual key or fetch from secure storage
                         .contentResponseOnWriteEnabled(true)
-                        .gatewayMode()
-                        .clientTelemetryConfig(TELEMETRY_CONFIG)
-                        .buildAsyncClient();
+                        .clientTelemetryConfig(TELEMETRY_CONFIG);
+
+                if (Configs.getConnectionMode().equalsIgnoreCase("direct")) {
+                    cosmosClientBuilder.directMode();
+                } else {
+                    cosmosClientBuilder.gatewayMode();
+                }
+
+                CosmosAsyncClient client = cosmosClientBuilder.buildAsyncClient();
 
                 clients.put(val.getHashId(), client);
             } catch (Exception e) {

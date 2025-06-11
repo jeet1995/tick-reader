@@ -31,17 +31,14 @@ public class TicksController {
             @RequestParam int totalTicks,
             @RequestParam boolean pinStart,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
-            @RequestParam (required = false, defaultValue = "1") int prefetch,
-            @RequestParam (required = false, defaultValue = "10") int pageSize,
-            @RequestParam (required = false, defaultValue = "1") int concurrency) {
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
 
         TickResponse tickResponse = ticksService.getTicks(
-                rics, totalTicks, pinStart, startTime, endTime, prefetch, pageSize, concurrency);
+                rics, totalTicks, pinStart, startTime, endTime);
 
         if (logger.isDebugEnabled()) {
-            logger.debug("Request parameters: rics={}, totalTicks={}, pinStart={}, startTime={}, endTime={}, prefetch={}, pageSize={}",
-                    rics, totalTicks, pinStart, startTime, endTime, prefetch, pageSize);
+            logger.debug("Request parameters: rics={}, totalTicks={}, pinStart={}, startTime={}, endTime={}",
+                    rics, totalTicks, pinStart, startTime, endTime);
             logger.debug("Ticks fetched: {}", tickResponse.getTicks().size());
         }
 

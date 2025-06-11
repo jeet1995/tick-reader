@@ -1,1 +1,1 @@
-GET http://localhost:8080/ticks/sort=messageTimestamp&recordKey?rics=AAPL,GOOGL,MSFT&totalTicks=8700&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:19:59.9999999Z&prefetch=1&pageSize=16&concurrency=16
+GET http://localhost:8080/ticks/sort=messageTimestamp&recordKey?rics=AAPL,GOOGL,MSFT&totalTicks=1&pinStart=true&startTime=2024-10-08T08:00:00.0000000Z&endTime=2024-10-08T08:19:59.9999999Z
