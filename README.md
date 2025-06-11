@@ -4,6 +4,8 @@ A Spring Boot application that queries tick data given list of RICs and date ran
 
 # Configuration
 
+## System Properties and Environment Variables
+
 | System Property Name           | Environment Variable Name      | Default Value | Description                        |
 |--------------------------------|--------------------------------|---------------|------------------------------------|
 | COSMOS.CONNECTION_MODE         | COSMOS_CONNECTION_MODE         | LOW           | `GATEWAY`                          | The  connection mode which should be used when connecting to Cosmo DB. The possible values are `GATEWAY` (default) or `DIRECT`. The default value should be sufficient for this workload.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -35,6 +37,53 @@ ticks:
       containerNameSuffix: "y"
       hashId: 2
   shardCountPerRic: 8
+```
+
+## Container Setup
+
+- Ensure that the Cosmos DB containers are set up with the name `container_<date>` where `<date>` is in the format `yyyyMMdd` and the suffix is `y`. For example, for the date `2024-10-08`, the container name would be `container_20241008y`.
+- Ensure that the containers are partitioned by `pk` (partition key) and composite indexed on `messageTimestamp` and `recordKey` for efficient sorting based on both these properties.
+
+### Composite Index Setup
+
+```json
+{
+    "indexingMode": "consistent",
+    "automatic": true,
+    "includedPaths": [
+        {
+            "path": "/*"
+        }
+    ],
+    "excludedPaths": [
+        {
+            "path": "/\"_etag\"/?"
+        }
+    ],
+    "fullTextIndexes": [],
+    "compositeIndexes": [
+        [
+            {
+                "path": "/messageTimestamp",
+                "order": "descending"
+            },
+            {
+                "path": "/recordKey",
+                "order": "descending"
+            }
+        ],
+        [
+            {
+                "path": "/messageTimestamp",
+                "order": "ascending"
+            },
+            {
+                "path": "/recordKey",
+                "order": "ascending"
+            }
+        ]
+    ]
+}
 ```
 
 # Running the application
