@@ -97,7 +97,7 @@ mvn clean package
 ## Running the application
 
 ```
-java -jar cp target/tick-reader-app.jar
+java -jar target/tick-reader-app.jar
 ```
 
 # Executing requests
