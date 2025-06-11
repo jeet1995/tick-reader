@@ -172,7 +172,7 @@ public class TicksServiceImpl implements TicksService {
                     }
 
                     if (orderedTicks.size() < totalTicks) {
-                        logger.info("Time now : {}, totalTicks: {}, orderedTicks.size(): {}", Instant.now(), totalTicks, orderedTicks.size());
+                        logger.debug("Time now : {}, totalTicks: {}, orderedTicks.size(): {}", Instant.now(), totalTicks, orderedTicks.size());
                         sink.tryEmitNext(ticks);
                     } else {
                         sink.tryEmitNext(ticks);
