@@ -34,7 +34,9 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -48,8 +50,8 @@ public class TicksServiceImpl implements TicksService {
     private final RicBasedCosmosClientFactory clientFactory;
     private final CosmosDbAccountConfiguration cosmosDbAccountConfiguration;
     private final ErrorHandlingStrategy errorHandlingStrategy;
-    private final AtomicInteger prefetch = new AtomicInteger(1);
-    private final AtomicInteger pageSize = new AtomicInteger(100);
+    private final AtomicInteger prefetch = new AtomicInteger(20);
+    private final AtomicInteger pageSize = new AtomicInteger(1000);
     private final AtomicInteger concurrency = new AtomicInteger(Configs.getCPUCnt());
 
     public TicksServiceImpl(RicBasedCosmosClientFactory clientFactory, CosmosDbAccountConfiguration cosmosDbAccountConfiguration) {
@@ -71,7 +73,7 @@ public class TicksServiceImpl implements TicksService {
         newStartTime = startTime.isAfter(endTime) ? endTime : startTime;
         newEndTime = endTime.isBefore(startTime) ? startTime : endTime;
 
-        List<TickRequestContext> tickRequestContexts = new ArrayList<>();
+        Map<Integer, TickRequestContext> tickRequestContexts = new HashMap<>();
 
         PriorityBlockingQueue<Tick> orderedTicks = new PriorityBlockingQueue<>(100, (t1, t2) -> {
 
@@ -130,13 +132,16 @@ public class TicksServiceImpl implements TicksService {
 
                 String tickIdentifier = TickServiceUtils.constructTickIdentifierPrefix(ric, date);
 
-                TickRequestContext tickRequestContext = new TickRequestContext(
+                tickRequestContexts.putIfAbsent(hashIdForRic, new TickRequestContext(
                         asyncContainer,
-                        tickIdentifier,
+                        new ArrayList<>(),
                         date,
-                        dateFormat);
+                        dateFormat));
 
-                tickRequestContexts.add(tickRequestContext);
+                TickRequestContext tickRequestContext = tickRequestContexts.get(hashIdForRic);
+                List<String> tickIdentifiers = tickRequestContext.getTickIdentifiers();
+
+                tickIdentifiers.add(tickIdentifier);
             }
         }
 
@@ -150,7 +155,7 @@ public class TicksServiceImpl implements TicksService {
     }
 
     private TickResponse executeQueryUntilTopN(
-            List<TickRequestContext> tickRequestContexts,
+            Map<Integer, TickRequestContext> tickRequestContexts,
             LocalDateTime startTime,
             LocalDateTime endTime,
             boolean pinStart,
@@ -209,7 +214,7 @@ public class TicksServiceImpl implements TicksService {
 
         List<CosmosDiagnosticsContext> diagnosticsContexts = new ArrayList<>();
 
-        for (TickRequestContext tickRequestContext : tickRequestContexts) {
+        for (TickRequestContext tickRequestContext : tickRequestContexts.values()) {
             diagnosticsContexts.addAll(tickRequestContext.getDiagnosticsContexts());
         }
 
@@ -222,7 +227,7 @@ public class TicksServiceImpl implements TicksService {
     }
 
     private SqlQuerySpec getSqlQuerySpec(
-            String tickIdentifier,
+            List<String> tickIdentifiers,
             LocalDateTime startTime,
             LocalDateTime endTime,
             String localDateAsString,
@@ -238,13 +243,20 @@ public class TicksServiceImpl implements TicksService {
 
         StringBuilder sb = new StringBuilder("(");
 
-        for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
-            sb.append("@pk");
-            sb.append(i);
+        int shardCount = this.cosmosDbAccountConfiguration.getShardCountPerRic();
 
-            parameters.add(new SqlParameter("@pk" + i, tickIdentifier + "|" + i));
+        int maxParamId = tickIdentifiers.size() * shardCount;
 
-            if (i < this.cosmosDbAccountConfiguration.getShardCountPerRic()) {
+        for (int i = 1; i <= maxParamId; i++) {
+
+            String param = "@pk" + i;
+            sb.append(param);
+
+            String tickIdentifier = tickIdentifiers.get((i - 1) / shardCount);
+
+            parameters.add(new SqlParameter(param, tickIdentifier + "|" + ((i % shardCount) + 1)));
+
+            if (i < maxParamId) {
                 sb.append(", ");
             }
         }
@@ -276,7 +288,7 @@ public class TicksServiceImpl implements TicksService {
         CosmosAsyncContainer asyncContainer = tickRequestContext.getAsyncContainer();
 
         SqlQuerySpec querySpec = tickRequestContext.getSqlQuerySpec() != null ? tickRequestContext.getSqlQuerySpec() : getSqlQuerySpec(
-                tickRequestContext.getTickIdentifier(),
+                tickRequestContext.getTickIdentifiers(),
                 startTime,
                 endTime,
                 tickRequestContext.getRequestDateAsString(),
@@ -301,7 +313,7 @@ public class TicksServiceImpl implements TicksService {
                         CosmosException cosmosException = (CosmosException) throwable;
 
                         if (TickServiceUtils.isResourceNotFound(cosmosException)) {
-                            logger.warn("Ric with associated ID {} does not exist for day : {}", tickRequestContext.getTickIdentifier(), asyncContainer.getId());
+                            logger.warn("Day : {} does not have any records!", asyncContainer.getId());
                             tickRequestContext.setContinuationToken("drained");
                             return Flux.empty();
                         }
@@ -325,14 +337,14 @@ public class TicksServiceImpl implements TicksService {
     }
 
     private Flux<PriorityBlockingQueue<Tick>> bufferedAndOrderedFetcher(
-            List<TickRequestContext> tickRequestContexts,
+            Map<Integer, TickRequestContext> tickRequestContexts,
             PriorityBlockingQueue<Tick> orderedTicks,
             LocalDateTime startTime,
             LocalDateTime endTime,
             boolean pinStart,
             int totalTicks) {
 
-        List<Flux<Tick>> tickQueryFluxes = tickRequestContexts.stream()
+        List<Flux<Tick>> tickQueryFluxes = tickRequestContexts.values().stream()
                 .map(tickRequestContext -> Flux.defer(() -> executeQuery(tickRequestContext, startTime, endTime, pinStart)))
                 .collect(Collectors.toList());
 

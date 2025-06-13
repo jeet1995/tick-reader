@@ -14,16 +14,16 @@ import java.util.concurrent.atomic.AtomicReference;
 public class TickRequestContext {
 
     private final CosmosAsyncContainer asyncContainer;
-    private final String tickIdentifier;
+    private final List<String> tickIdentifiers;
     private final String requestDateAsString;
     private final String dateFormat;
     private final AtomicReference<String> continuationToken = new AtomicReference<>();
     private final AtomicReference<SqlQuerySpec> sqlQuerySpec = new AtomicReference<>();
     private final CopyOnWriteArrayList<CosmosDiagnosticsContext> diagnosticsContexts = new CopyOnWriteArrayList<>();
 
-    public TickRequestContext(CosmosAsyncContainer asyncContainer, String tickIdentifier, String requestDateAsString, String dateFormat) {
+    public TickRequestContext(CosmosAsyncContainer asyncContainer, List<String> tickIdentifiers, String requestDateAsString, String dateFormat) {
         this.asyncContainer = asyncContainer;
-        this.tickIdentifier = tickIdentifier;
+        this.tickIdentifiers = tickIdentifiers;
         this.requestDateAsString = requestDateAsString;
         this.dateFormat = dateFormat;
     }
@@ -32,8 +32,8 @@ public class TickRequestContext {
         return this.asyncContainer;
     }
 
-    public String getTickIdentifier() {
-        return this.tickIdentifier;
+    public List<String> getTickIdentifiers() {
+        return this.tickIdentifiers;
     }
 
     public String getContinuationToken() {
