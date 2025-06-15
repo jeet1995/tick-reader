@@ -107,6 +107,7 @@ public class Tick {
     private String isinCdD;
     private String qualifiers;
     private String userQualifiers;
+    private String docType;
 
     public String getId() {
         return id;
@@ -423,4 +424,7 @@ public class Tick {
 
     public String getUserQualifiers() { return userQualifiers; }
     public void setUserQualifiers(String userQualifiers) { this.userQualifiers = userQualifiers; }
+
+    public String getDocType() { return docType; }
+    public void setDocType(String docType) { this.docType = docType;}
 }

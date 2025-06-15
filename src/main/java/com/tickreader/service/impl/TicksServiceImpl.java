@@ -34,9 +34,11 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -54,6 +56,23 @@ public class TicksServiceImpl implements TicksService {
     private final AtomicInteger pageSize = new AtomicInteger(1000);
     private final AtomicInteger concurrency = new AtomicInteger(Configs.getCPUCnt());
 
+    private final Comparator<Tick> tickComparatorWithPinStartAsTrue = (t1, t2) -> {
+
+        if (t1.getMessageTimestamp().equals(t2.getMessageTimestamp())) {
+            return Long.compare(t2.getRecordKey(), t1.getRecordKey());
+        }
+        return Long.compare(t2.getMessageTimestamp(), t1.getMessageTimestamp());
+    };
+
+    private final Comparator<Tick> getTickComparatorWithPinStartAsFalse = (t1, t2) -> {
+
+        if (t1.getMessageTimestamp().equals(t2.getMessageTimestamp())) {
+            return Long.compare(t1.getRecordKey(), t2.getRecordKey());
+        }
+        return Long.compare(t1.getMessageTimestamp(), t2.getMessageTimestamp());
+    };
+
+
     public TicksServiceImpl(RicBasedCosmosClientFactory clientFactory, CosmosDbAccountConfiguration cosmosDbAccountConfiguration) {
         this.clientFactory = clientFactory;
         this.cosmosDbAccountConfiguration = cosmosDbAccountConfiguration;
@@ -63,6 +82,7 @@ public class TicksServiceImpl implements TicksService {
     @Override
     public TickResponse getTicks(
             List<String> rics,
+            List<String> docTypes,
             int totalTicks,
             boolean pinStart,
             LocalDateTime startTime,
@@ -73,29 +93,9 @@ public class TicksServiceImpl implements TicksService {
         newStartTime = startTime.isAfter(endTime) ? endTime : startTime;
         newEndTime = endTime.isBefore(startTime) ? startTime : endTime;
 
-        Map<Integer, TickRequestContext> tickRequestContexts = new HashMap<>();
+        Map<String, TickRequestContext> tickRequestContexts = new HashMap<>();
 
-        PriorityBlockingQueue<Tick> orderedTicks = new PriorityBlockingQueue<>(100, (t1, t2) -> {
-
-            if (t1.getMessageTimestamp().equals(t2.getMessageTimestamp())) {
-
-                if (t1.getRecordKey().equals(t2.getRecordKey())) {
-                    return 0;
-                }
-
-                if (pinStart) {
-                    return t1.getRecordKey() > t2.getRecordKey() ? -1 : 1;
-                } else {
-                    return t1.getRecordKey() > t2.getRecordKey() ? 1 : -1;
-                }
-            }
-
-            if (pinStart) {
-                return t1.getMessageTimestamp() > t2.getMessageTimestamp() ? -1 : 1;
-            } else {
-                return t1.getMessageTimestamp() > t2.getMessageTimestamp() ? 1 : -1;
-            }
-        });
+        ConcurrentLinkedQueue<Tick> orderedTicks = new ConcurrentLinkedQueue<>();
 
         for (String ric : rics) {
 
@@ -132,13 +132,13 @@ public class TicksServiceImpl implements TicksService {
 
                 String tickIdentifier = TickServiceUtils.constructTickIdentifierPrefix(ric, date);
 
-                tickRequestContexts.putIfAbsent(hashIdForRic, new TickRequestContext(
+                tickRequestContexts.putIfAbsent((hashIdForRic + date), new TickRequestContext(
                         asyncContainer,
                         new ArrayList<>(),
                         date,
                         dateFormat));
 
-                TickRequestContext tickRequestContext = tickRequestContexts.get(hashIdForRic);
+                TickRequestContext tickRequestContext = tickRequestContexts.get((hashIdForRic + date));
                 List<String> tickIdentifiers = tickRequestContext.getTickIdentifiers();
 
                 tickIdentifiers.add(tickIdentifier);
@@ -147,6 +147,7 @@ public class TicksServiceImpl implements TicksService {
 
         return executeQueryUntilTopN(
                 tickRequestContexts,
+                docTypes,
                 newStartTime,
                 newEndTime,
                 pinStart,
@@ -155,20 +156,21 @@ public class TicksServiceImpl implements TicksService {
     }
 
     private TickResponse executeQueryUntilTopN(
-            Map<Integer, TickRequestContext> tickRequestContexts,
+            Map<String, TickRequestContext> tickRequestContexts,
+            List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
             boolean pinStart,
-            PriorityBlockingQueue<Tick> orderedTicks,
+            ConcurrentLinkedQueue<Tick> orderedTicks,
             int totalTicks) {
 
-        Sinks.Many<PriorityBlockingQueue<Tick>> sink = Sinks.many().multicast().onBackpressureBuffer();
+        Sinks.Many<ConcurrentLinkedQueue<Tick>> sink = Sinks.many().multicast().onBackpressureBuffer();
 
         AtomicReference<Instant> executionStartTime = new AtomicReference<>(Instant.MIN);
         AtomicReference<Instant> executionEndTime = new AtomicReference<>(Instant.MAX);
 
         Flux<Object> dataFlux = Flux.defer(() -> bufferedAndOrderedFetcher(
-                tickRequestContexts, orderedTicks, startTime, endTime, pinStart, totalTicks))
+                tickRequestContexts, docTypes, orderedTicks, startTime, endTime, pinStart, totalTicks))
                 .flatMap(ticks -> {
 
                     if (tickRequestContexts.isEmpty()) {
@@ -191,7 +193,7 @@ public class TicksServiceImpl implements TicksService {
 
         AtomicReference<Disposable> queryFluxRef = new AtomicReference<>();
 
-        PriorityBlockingQueue<Tick> ticksPq = sink
+        ConcurrentLinkedQueue<Tick> ticksPq = sink
                 .asFlux()
                 .publishOn(Schedulers.boundedElastic())
                 .doOnSubscribe(subscription -> {
@@ -228,6 +230,7 @@ public class TicksServiceImpl implements TicksService {
 
     private SqlQuerySpec getSqlQuerySpec(
             List<String> tickIdentifiers,
+            List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
             String localDateAsString,
@@ -266,14 +269,33 @@ public class TicksServiceImpl implements TicksService {
         parameters.add(new SqlParameter("@startTime", queryStartTime));
         parameters.add(new SqlParameter("@endTime", queryEndTime));
 
+        StringBuilder docTypePlaceholders = new StringBuilder();
+
+        docTypePlaceholders.append("(");
+
+        for (int i = 0; i < docTypes.size(); i++) {
+
+            String param = "@docType" + i;
+
+            parameters.add(new SqlParameter(param, docTypes.get(i)));
+
+            docTypePlaceholders.append(param);
+
+            if (i < docTypes.size() - 1) {
+                docTypePlaceholders.append(", ");
+            }
+        }
+
+        docTypePlaceholders.append(")");
+
         if (pinStart) {
-            String query = "SELECT * FROM C WHERE C.pk IN " + sb +
-                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp DESC";
+            String query = "SELECT * FROM C WHERE C.pk IN " + sb + " AND C.docType IN " + docTypePlaceholders +
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp DESC, C.recordKey DESC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
-            String query = "SELECT * FROM C WHERE C.pk IN " + sb +
-                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp ASC";
+            String query = "SELECT * FROM C WHERE C.pk IN " + sb + " AND C.docType IN " + docTypePlaceholders +
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp ASC, C.recordKey ASC";
 
             return new SqlQuerySpec(query, parameters);
         }
@@ -281,6 +303,7 @@ public class TicksServiceImpl implements TicksService {
 
     private Flux<Tick> executeQuery(
             TickRequestContext tickRequestContext,
+            List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
             boolean pinStart) {
@@ -289,6 +312,7 @@ public class TicksServiceImpl implements TicksService {
 
         SqlQuerySpec querySpec = tickRequestContext.getSqlQuerySpec() != null ? tickRequestContext.getSqlQuerySpec() : getSqlQuerySpec(
                 tickRequestContext.getTickIdentifiers(),
+                docTypes,
                 startTime,
                 endTime,
                 tickRequestContext.getRequestDateAsString(),
@@ -336,22 +360,25 @@ public class TicksServiceImpl implements TicksService {
                 }, concurrency.get(), prefetch.get());
     }
 
-    private Flux<PriorityBlockingQueue<Tick>> bufferedAndOrderedFetcher(
-            Map<Integer, TickRequestContext> tickRequestContexts,
-            PriorityBlockingQueue<Tick> orderedTicks,
+    private Flux<ConcurrentLinkedQueue<Tick>> bufferedAndOrderedFetcher(
+            Map<String, TickRequestContext> tickRequestContexts,
+            List<String> docTypes,
+            ConcurrentLinkedQueue<Tick> orderedTicks,
             LocalDateTime startTime,
             LocalDateTime endTime,
             boolean pinStart,
             int totalTicks) {
 
         List<Flux<Tick>> tickQueryFluxes = tickRequestContexts.values().stream()
-                .map(tickRequestContext -> Flux.defer(() -> executeQuery(tickRequestContext, startTime, endTime, pinStart)))
+                .map(tickRequestContext -> Flux.defer(() -> executeQuery(tickRequestContext, docTypes, startTime, endTime, pinStart)))
                 .collect(Collectors.toList());
+
+        Comparator<Tick> comparator = pinStart ? tickComparatorWithPinStartAsTrue : getTickComparatorWithPinStartAsFalse;
 
         @SuppressWarnings("unchecked")
         Flux<Tick>[] tickQueryFluxArray = tickQueryFluxes.toArray(new Flux[0]);
 
-        Flux<PriorityBlockingQueue<Tick>> sourceFlux = Flux.defer(() -> Flux.mergeComparingDelayError(prefetch.get(), orderedTicks.comparator(), tickQueryFluxArray))
+        Flux<ConcurrentLinkedQueue<Tick>> sourceFlux = Flux.defer(() -> Flux.mergeComparingDelayError(prefetch.get(), comparator, tickQueryFluxArray))
                 .flatMap(o -> {
 
                     if (o != null && orderedTicks.size() < totalTicks) {

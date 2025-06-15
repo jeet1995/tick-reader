@@ -28,13 +28,14 @@ public class TicksController {
     @GetMapping("/sort=messageTimestamp&recordKey")
     public TickResponse getTicks(
             @RequestParam List<String> rics,
+            @RequestParam List<String> docTypes,
             @RequestParam int totalTicks,
             @RequestParam boolean pinStart,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
 
         TickResponse tickResponse = ticksService.getTicks(
-                rics, totalTicks, pinStart, startTime, endTime);
+                rics, docTypes, totalTicks, pinStart, startTime, endTime);
 
         if (logger.isDebugEnabled()) {
             logger.debug("Request parameters: rics={}, totalTicks={}, pinStart={}, startTime={}, endTime={}",
