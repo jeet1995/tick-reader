@@ -8,6 +8,7 @@ import java.util.List;
 public interface TicksService {
     TickResponse getTicks(
             List<String> rics,
+            List<String> docTypes,
             int totalTicks,
             boolean pinStart,
             LocalDateTime startTime,
