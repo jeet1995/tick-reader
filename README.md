@@ -68,7 +68,7 @@ ticks:
                 "order": "descending"
             },
             {
-                "path": "/recordKey",
+                "path": "/recordkey",
                 "order": "descending"
             }
         ],
@@ -78,7 +78,7 @@ ticks:
                 "order": "ascending"
             },
             {
-                "path": "/recordKey",
+                "path": "/recordkey",
                 "order": "ascending"
             }
         ]

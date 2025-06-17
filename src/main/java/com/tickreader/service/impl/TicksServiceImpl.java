@@ -39,7 +39,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -59,7 +58,7 @@ public class TicksServiceImpl implements TicksService {
     private final Comparator<Tick> tickComparatorWithPinStartAsTrue = (t1, t2) -> {
 
         if (t1.getMessageTimestamp().equals(t2.getMessageTimestamp())) {
-            return Long.compare(t2.getRecordKey(), t1.getRecordKey());
+            return Long.compare(t2.getRecordkey(), t1.getRecordkey());
         }
         return Long.compare(t2.getMessageTimestamp(), t1.getMessageTimestamp());
     };
@@ -67,7 +66,7 @@ public class TicksServiceImpl implements TicksService {
     private final Comparator<Tick> getTickComparatorWithPinStartAsFalse = (t1, t2) -> {
 
         if (t1.getMessageTimestamp().equals(t2.getMessageTimestamp())) {
-            return Long.compare(t1.getRecordKey(), t2.getRecordKey());
+            return Long.compare(t1.getRecordkey(), t2.getRecordkey());
         }
         return Long.compare(t1.getMessageTimestamp(), t2.getMessageTimestamp());
     };
@@ -290,12 +289,12 @@ public class TicksServiceImpl implements TicksService {
 
         if (pinStart) {
             String query = "SELECT * FROM C WHERE C.pk IN " + sb + " AND C.docType IN " + docTypePlaceholders +
-                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp DESC, C.recordKey DESC";
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp DESC, C.recordkey DESC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
             String query = "SELECT * FROM C WHERE C.pk IN " + sb + " AND C.docType IN " + docTypePlaceholders +
-                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp ASC, C.recordKey ASC";
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp ASC, C.recordkey ASC";
 
             return new SqlQuerySpec(query, parameters);
         }

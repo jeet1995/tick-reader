@@ -11,7 +11,7 @@ public class Tick {
     private Long messageTimestamp;
     private Long executionTime;
     private Integer msgSequence;
-    private Long recordKey;
+    private Long recordkey;
     private Long collectDatetime;
     private Integer rtlWrap;
     private Long rtl;
@@ -137,8 +137,8 @@ public class Tick {
     public Integer getMsgSequence() { return msgSequence; }
     public void setMsgSequence(Integer msgSequence) { this.msgSequence = msgSequence; }
 
-    public Long getRecordKey() { return recordKey; }
-    public void setRecordKey(Long recordKey) { this.recordKey = recordKey; }
+    public Long getRecordkey() { return recordkey; }
+    public void setRecordkey(Long recordkey) { this.recordkey = recordkey; }
 
     public Long getCollectDatetime() { return collectDatetime; }
     public void setCollectDatetime(Long collectDatetime) { this.collectDatetime = collectDatetime; }
