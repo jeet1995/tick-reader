@@ -31,6 +31,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -49,22 +50,13 @@ public class TicksServiceImpl implements TicksService {
     private final ErrorHandlingStrategy errorHandlingStrategy;
     private final CosmosQueryRequestOptions queryRequestOptions;
 
-    private final Comparator<Tick> tickComparatorWithPinStartAsTrue = (t1, t2) -> {
-
-        if (t1.getMessageTimestamp().equals(t2.getMessageTimestamp())) {
-            return Long.compare(t2.getRecordkey(), t1.getRecordkey());
-        }
-        return Long.compare(t2.getMessageTimestamp(), t1.getMessageTimestamp());
-    };
-
-    private final Comparator<Tick> getTickComparatorWithPinStartAsFalse = (t1, t2) -> {
+    private final Comparator<Tick> tickComparatorMessageTimestampAscending = (t1, t2) -> {
 
         if (t1.getMessageTimestamp().equals(t2.getMessageTimestamp())) {
             return Long.compare(t1.getRecordkey(), t2.getRecordkey());
         }
         return Long.compare(t1.getMessageTimestamp(), t2.getMessageTimestamp());
     };
-
 
     public TicksServiceImpl(RicBasedCosmosClientFactory clientFactory, CosmosDbAccountConfiguration cosmosDbAccountConfiguration) {
         this.clientFactory = clientFactory;
@@ -94,15 +86,15 @@ public class TicksServiceImpl implements TicksService {
 
             if (pinStart) {
                 if (t1.getMessageTimestamp().equals(t2.getMessageTimestamp())) {
-                    return Long.compare(t2.getRecordkey(), t1.getRecordkey());
-                } else {
-                    return Long.compare(t2.getMessageTimestamp(), t1.getMessageTimestamp());
-                }
-            } else {
-                if (t1.getMessageTimestamp().equals(t2.getMessageTimestamp())) {
                     return Long.compare(t1.getRecordkey(), t2.getRecordkey());
                 } else {
                     return Long.compare(t1.getMessageTimestamp(), t2.getMessageTimestamp());
+                }
+            } else {
+                if (t1.getMessageTimestamp().equals(t2.getMessageTimestamp())) {
+                    return Long.compare(t2.getRecordkey(), t1.getRecordkey());
+                } else {
+                    return Long.compare(t2.getMessageTimestamp(), t1.getMessageTimestamp());
                 }
             }
         });
@@ -189,26 +181,24 @@ public class TicksServiceImpl implements TicksService {
 
         if (pinStart) {
             for (int i = timeChunks.size() - 1; i >= 0; i--) {
-
-                logger.info("Attempting to execute query for time chunk: {}", timeChunks.get(i));
-
                 tickRequestContexts.values().forEach(TickRequestContext::resetContinuationToken);
                 bufferedAndOrderedFetcher(tickRequestContexts, docTypes, orderedTicks, timeChunks.get(i), pinStart, totalTicks, lock).blockLast();
 
-                if (orderedTicks.size() == totalTicks) {
-                    break;
+                synchronized (lock) {
+                    if (orderedTicks.size() == totalTicks) {
+                        break;
+                    }
                 }
             }
         } else {
             for (int i = 0; i < timeChunks.size(); i++) {
-
-                logger.info("Attempting to execute query for time chunk: {}", timeChunks.get(i));
-
                 tickRequestContexts.values().forEach(TickRequestContext::resetContinuationToken);
                 bufferedAndOrderedFetcher(tickRequestContexts, docTypes, orderedTicks, timeChunks.get(i), pinStart, totalTicks, lock).blockLast();
 
-                if (orderedTicks.size() == totalTicks) {
-                    break;
+                synchronized (lock) {
+                    if (orderedTicks.size() == totalTicks) {
+                        break;
+                    }
                 }
             }
         }
@@ -219,7 +209,13 @@ public class TicksServiceImpl implements TicksService {
             diagnosticsContexts.addAll(tickRequestContext.getDiagnosticsContexts());
         }
 
-        List<Tick> ticks = orderedTicks == null ? new ArrayList<>() : new ArrayList<>(orderedTicks);
+        List<Tick> ticks = new ArrayList<>();
+
+        while (!orderedTicks.isEmpty()) {
+            ticks.add(orderedTicks.poll());
+        }
+
+        Collections.reverse(ticks);
 
         executionEndTime.set(Instant.now());
 
@@ -290,13 +286,13 @@ public class TicksServiceImpl implements TicksService {
         docTypePlaceholders.append(")");
 
         if (pinStart) {
-            String query = "SELECT C.pk, C.recordkey, C.messageTimestamp FROM C WHERE C.pk IN " + sb + " AND C.docType IN " + docTypePlaceholders + " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime";
+            String query = "SELECT * FROM C WHERE C.pk IN " + sb + " AND C.docType IN " + docTypePlaceholders + " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime";
 
             logger.info("Executing query with pinStart as true: {}", query);
 
             return new SqlQuerySpec(query, parameters);
         } else {
-            String query = "SELECT C.pk, C.recordkey, C.messageTimestamp FROM C WHERE C.pk IN " + sb + " AND C.docType IN " + docTypePlaceholders + " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime";
+            String query = "SELECT * FROM C WHERE C.pk IN " + sb + " AND C.docType IN " + docTypePlaceholders + " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime";
 
             return new SqlQuerySpec(query, parameters);
         }
@@ -384,15 +380,31 @@ public class TicksServiceImpl implements TicksService {
         @SuppressWarnings("unchecked")
         Flux<Tick>[] tickQueryFluxArray = tickQueryFluxes.toArray(new Flux[0]);
 
-        Flux<PriorityBlockingQueue<Tick>> sourceFlux = Flux.defer(() -> Flux.mergeDelayError(10000, tickQueryFluxArray))
+        Flux<PriorityBlockingQueue<Tick>> sourceFlux = Flux.defer(() -> Flux.mergeSequential(tickQueryFluxArray))
                 .flatMap(o -> {
 
                     synchronized (lock) {
-                        if (orderedTicks.size() >= totalTicks) {
-                            orderedTicks.poll();
+                        if (orderedTicks.size() < totalTicks) {
                             orderedTicks.offer(o);
                         } else {
-                            orderedTicks.offer(o);
+                            if (pinStart) {
+
+                                // lowest needs to be removed
+                                // orderedTicks will poll / peek in ascending order
+                                // if incoming tick is higher than the lowest, replace it
+                                if (tickComparatorMessageTimestampAscending.compare(o, orderedTicks.peek()) > 0) {
+                                    orderedTicks.poll();
+                                    orderedTicks.offer(o);
+                                }
+                            } else {
+                                // highest needs to be removed
+                                // orderedTicks will poll / peek in descending order
+                                // if incoming tick is lower than the highest, replace it
+                                if (tickComparatorMessageTimestampAscending.compare(o, orderedTicks.peek()) < 0) {
+                                    orderedTicks.poll();
+                                    orderedTicks.offer(o);
+                                }
+                            }
                         }
                     }
 
