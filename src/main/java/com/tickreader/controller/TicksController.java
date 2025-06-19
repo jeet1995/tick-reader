@@ -32,10 +32,11 @@ public class TicksController {
             @RequestParam int totalTicks,
             @RequestParam boolean pinStart,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
+            @RequestParam (required = false) int totalChunks) {
 
         TickResponse tickResponse = ticksService.getTicks(
-                rics, docTypes, totalTicks, pinStart, startTime, endTime);
+                rics, docTypes, totalTicks, pinStart, startTime, endTime, totalChunks);
 
         if (logger.isDebugEnabled()) {
             logger.debug("Request parameters: rics={}, totalTicks={}, pinStart={}, startTime={}, endTime={}",
