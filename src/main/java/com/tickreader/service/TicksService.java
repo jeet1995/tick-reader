@@ -12,5 +12,6 @@ public interface TicksService {
             int totalTicks,
             boolean pinStart,
             LocalDateTime startTime,
-            LocalDateTime endTime);
+            LocalDateTime endTime,
+            int totalChunks);
 }

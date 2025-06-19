@@ -18,7 +18,6 @@ public class TickRequestContext {
     private final String requestDateAsString;
     private final String dateFormat;
     private final AtomicReference<String> continuationToken = new AtomicReference<>();
-    private final AtomicReference<SqlQuerySpec> sqlQuerySpec = new AtomicReference<>();
     private final CopyOnWriteArrayList<CosmosDiagnosticsContext> diagnosticsContexts = new CopyOnWriteArrayList<>();
 
     public TickRequestContext(CosmosAsyncContainer asyncContainer, List<String> tickIdentifiers, String requestDateAsString, String dateFormat) {
@@ -44,14 +43,6 @@ public class TickRequestContext {
         this.continuationToken.set(continuationToken);
     }
 
-    public SqlQuerySpec getSqlQuerySpec() {
-        return this.sqlQuerySpec.get();
-    }
-
-    public void setSqlQuerySpec(SqlQuerySpec sqlQuerySpec) {
-        this.sqlQuerySpec.set(sqlQuerySpec);
-    }
-
     public String getRequestDateAsString() {
         return this.requestDateAsString;
     }
@@ -66,5 +57,9 @@ public class TickRequestContext {
 
     public void addDiagnosticsContext(CosmosDiagnosticsContext diagnosticsContext) {
         this.diagnosticsContexts.add(diagnosticsContext);
+    }
+
+    public void resetContinuationToken() {
+        this.continuationToken.set(null);
     }
 }
