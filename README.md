@@ -560,6 +560,18 @@ A sample request to query tick data for specific RICs and a date range can be ma
 GET http://localhost:8080/ticks/sort=messageTimestamp&recordKey?rics=AAPL,GOOGL,MSFT&docTypes=TAS,TAQ&totalTicks=10000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&totalChunks=6
 ```
 
+## Query Parameters
+
+| Parameter Name | Type    | Required | Example                      | Description                                                                                                             |
+|----------------|---------|----------|------------------------------|-------------------------------------------------------------------------------------------------------------------------|
+| rics           | String  | Yes      | `MSFT,GOOGL,AAPL`            | Comma-separated list of RICs to query.                                                                                  |
+| docTypes       | String  | Yes      | `TAS,TAQ`                    | Comma-separated list of document types to filter by.                                                                    |
+| totalTicks     | Integer | Yes      | 10000                        | Total number of ticks to return.                                                                                        |
+| pinStart       | Boolean | Yes      | `true`                       | Whether to pin the start time to the first tick.                                                                        |
+| startTime      | String  | Yes      | 2024-10-07T00:00:00.0000000Z | Start time in ISO 8601 format.                                                                                          |
+| endTime        | String  | Yes      | 2024-10-07T23:59:59.9999999Z | End time in ISO 8601 format.                                                                                            |
+| totalChunks    | Integer | Yes      | 6                            | Total number of chunks to return. This is used to determine the number of time windows to run internal queries against. |
+
 ## Response
 
 A sample response will look like below:
