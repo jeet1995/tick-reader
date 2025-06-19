@@ -15,6 +15,7 @@ import com.tickreader.entity.Tick;
 import com.tickreader.service.TicksService;
 import com.tickreader.service.strategy.ErrorHandlingStrategy;
 import com.tickreader.service.strategy.RetryOnSpecificExceptionStrategy;
+import com.tickreader.service.utils.LongUtils;
 import com.tickreader.service.utils.TickServiceUtils;
 import org.apache.spark.unsafe.hash.Murmur3_x86_32;
 import org.apache.spark.unsafe.types.UTF8String;
@@ -53,9 +54,9 @@ public class TicksServiceImpl implements TicksService {
     private final Comparator<Tick> tickComparatorMessageTimestampAscending = (t1, t2) -> {
 
         if (t1.getMessageTimestamp().equals(t2.getMessageTimestamp())) {
-            return Long.compare(t1.getRecordkey(), t2.getRecordkey());
+            return LongUtils.safeCompare(t1.getRecordkey(), t2.getRecordkey());
         }
-        return Long.compare(t1.getMessageTimestamp(), t2.getMessageTimestamp());
+        return LongUtils.safeCompare(t1.getMessageTimestamp(), t2.getMessageTimestamp());
     };
 
     public TicksServiceImpl(RicBasedCosmosClientFactory clientFactory, CosmosDbAccountConfiguration cosmosDbAccountConfiguration) {
@@ -86,15 +87,15 @@ public class TicksServiceImpl implements TicksService {
 
             if (pinStart) {
                 if (t1.getMessageTimestamp().equals(t2.getMessageTimestamp())) {
-                    return Long.compare(t1.getRecordkey(), t2.getRecordkey());
+                    return LongUtils.safeCompare(t1.getRecordkey(), t2.getRecordkey());
                 } else {
-                    return Long.compare(t1.getMessageTimestamp(), t2.getMessageTimestamp());
+                    return LongUtils.safeCompare(t1.getMessageTimestamp(), t2.getMessageTimestamp());
                 }
             } else {
                 if (t1.getMessageTimestamp().equals(t2.getMessageTimestamp())) {
-                    return Long.compare(t2.getRecordkey(), t1.getRecordkey());
+                    return LongUtils.safeCompare(t2.getRecordkey(), t1.getRecordkey());
                 } else {
-                    return Long.compare(t2.getMessageTimestamp(), t1.getMessageTimestamp());
+                    return LongUtils.safeCompare(t2.getMessageTimestamp(), t1.getMessageTimestamp());
                 }
             }
         });
