@@ -7,6 +7,7 @@ import com.azure.cosmos.CosmosException;
 import com.azure.cosmos.implementation.Configs;
 import com.azure.cosmos.models.CosmosQueryRequestOptions;
 import com.azure.cosmos.models.FeedRange;
+import com.azure.cosmos.models.PartitionKey;
 import com.azure.cosmos.models.SqlParameter;
 import com.azure.cosmos.models.SqlQuerySpec;
 import com.tickreader.config.CosmosDbAccount;
@@ -240,14 +241,28 @@ public class FeedRangeBackupTicksServiceImpl implements BackupTicksService {
                     pinStart
             );
 
-            // Execute query with FeedRange
-            List<Tick> ticks = executeQueryWithFeedRange(feedRangeContext, querySpec);
+            // Create FeedRange for the specific shard
+            String partitionKeyValue = feedRangeContext.getTickIdentifier() + "|" + feedRangeContext.getShardId();
+            FeedRange feedRange = FeedRange.forLogicalPartition(new PartitionKey(partitionKeyValue));
+            
+            // Create query options with FeedRange
+            CosmosQueryRequestOptions queryOptions = new CosmosQueryRequestOptions();
+            queryOptions.setFeedRange(feedRange);
+
+            // Execute fetchNextPage in parallel for pagination
+            List<Tick> allTicks = executeFetchNextPageInParallel(
+                    feedRangeContext.getAsyncContainer(),
+                    querySpec,
+                    queryOptions,
+                    feedRangeContext,
+                    allDiagnosticsContexts
+            );
             
             // Add ticks to priority queue using single-threaded executor
-            if (!ticks.isEmpty()) {
+            if (!allTicks.isEmpty()) {
                 CompletableFuture.runAsync(() -> {
                     synchronized (priorityQueue) {
-                        for (Tick tick : ticks) {
+                        for (Tick tick : allTicks) {
                             if (priorityQueue.size() >= totalTicks) {
                                 // If queue is full, check if this tick should replace the worst one
                                 Tick head = priorityQueue.peek();
@@ -263,52 +278,86 @@ public class FeedRangeBackupTicksServiceImpl implements BackupTicksService {
                 }, priorityQueueExecutorService).join(); // Wait for completion
             }
 
-            // Collect diagnostics
-            synchronized (allDiagnosticsContexts) {
-                allDiagnosticsContexts.addAll(feedRangeContext.getDiagnosticsContexts());
-            }
-
         } catch (Exception e) {
             logger.error("Error processing FeedRange context: {}", e.getMessage(), e);
         }
     }
 
-    private boolean shouldReplace(Tick existing, Tick newTick, boolean pinStart) {
-        if (pinStart) {
-            return tickComparatorWithPinStartAsTrue.compare(newTick, existing) > 0;
-        } else {
-            return getTickComparatorWithPinStartAsFalse.compare(newTick, existing) < 0;
-        }
-    }
-
-    private List<Tick> executeQueryWithFeedRange(
+    /**
+     * Executes fetchNextPage calls in parallel for efficient pagination
+     * This method coordinates parallel execution of fetchNextPage across multiple pages
+     */
+    private List<Tick> executeFetchNextPageInParallel(
+            CosmosAsyncContainer asyncContainer,
+            SqlQuerySpec querySpec,
+            CosmosQueryRequestOptions queryOptions,
             FeedRangeTickRequestContext feedRangeContext,
-            SqlQuerySpec querySpec) {
+            List<CosmosDiagnosticsContext> allDiagnosticsContexts) {
 
-        CosmosAsyncContainer asyncContainer = feedRangeContext.getAsyncContainer();
-        List<Tick> allTicks = new ArrayList<>();
+        List<Tick> allTicks = Collections.synchronizedList(new ArrayList<>());
         String continuationToken = null;
+        int maxParallelPages = 5; // Limit parallel page fetches to avoid overwhelming the system
 
         try {
-            // Create FeedRange for the specific shard
-            FeedRange feedRange = FeedRange.forLogicalPartition(feedRangeContext.getShardId());
-            
-            // Create query options with FeedRange
-            CosmosQueryRequestOptions queryOptions = new CosmosQueryRequestOptions();
-            queryOptions.setFeedRange(feedRange);
-
             do {
-                // Execute query synchronously using block() with FeedRange
-                var page = asyncContainer.queryItems(querySpec, queryOptions, Tick.class)
-                        .byPage(continuationToken, pageSize)
-                        .blockFirst();
+                // Create a batch of parallel fetchNextPage calls
+                List<CompletableFuture<PageResult>> pageFutures = new ArrayList<>();
+                
+                // Start with the current continuation token
+                String currentToken = continuationToken;
+                
+                // Create multiple parallel page fetch tasks
+                for (int i = 0; i < maxParallelPages; i++) {
+                    final String token = currentToken;
+                    CompletableFuture<PageResult> pageFuture = CompletableFuture.supplyAsync(() -> 
+                            fetchNextPage(asyncContainer, querySpec, queryOptions, token, pageSize), 
+                            queryExecutorService);
+                    
+                    pageFutures.add(pageFuture);
+                    
+                    // If we get a continuation token, prepare for the next batch
+                    if (currentToken != null) {
+                        // We'll update currentToken after getting the first result
+                        break;
+                    }
+                }
 
-                if (page != null) {
-                    continuationToken = page.getContinuationToken();
-                    allTicks.addAll(page.getResults());
+                // Wait for all page fetches to complete
+                CompletableFuture<Void> allPagesFuture = CompletableFuture.allOf(
+                        pageFutures.toArray(new CompletableFuture[0])
+                );
 
-                    if (page.getCosmosDiagnostics() != null) {
-                        feedRangeContext.addDiagnosticsContext(page.getCosmosDiagnostics().getDiagnosticsContext());
+                // Process results
+                allPagesFuture.thenRun(() -> {
+                    for (CompletableFuture<PageResult> future : pageFutures) {
+                        try {
+                            PageResult result = future.get();
+                            if (result != null && result.getTicks() != null) {
+                                allTicks.addAll(result.getTicks());
+                                
+                                if (result.getDiagnosticsContext() != null) {
+                                    synchronized (allDiagnosticsContexts) {
+                                        allDiagnosticsContexts.add(result.getDiagnosticsContext());
+                                    }
+                                }
+                            }
+                        } catch (Exception e) {
+                            logger.error("Error processing page result: {}", e.getMessage(), e);
+                        }
+                    }
+                }).join();
+
+                // Update continuation token for next iteration
+                // Get the continuation token from the first successful result
+                for (CompletableFuture<PageResult> future : pageFutures) {
+                    try {
+                        PageResult result = future.get();
+                        if (result != null && result.getContinuationToken() != null) {
+                            continuationToken = result.getContinuationToken();
+                            break;
+                        }
+                    } catch (Exception e) {
+                        // Continue to next future
                     }
                 }
 
@@ -319,17 +368,63 @@ public class FeedRangeBackupTicksServiceImpl implements BackupTicksService {
                 logger.warn("FeedRange {} for container {} does not have any records!", 
                         feedRangeContext.getShardId(), asyncContainer.getId());
             } else {
-                logger.error("Cosmos exception during FeedRange query execution: {}", e.getMessage(), e);
+                logger.error("Cosmos exception during parallel page fetch: {}", e.getMessage(), e);
                 throw e;
             }
         } catch (Exception e) {
-            logger.error("Error during FeedRange query execution: {}", e.getMessage(), e);
-            throw new RuntimeException("FeedRange query execution failed", e);
+            logger.error("Error during parallel page fetch: {}", e.getMessage(), e);
+            throw new RuntimeException("Parallel page fetch failed", e);
         }
 
-        return allTicks;
+        return new ArrayList<>(allTicks);
     }
 
+    /**
+     * Fetches the next page of results from Cosmos DB
+     * This method is designed to be called in parallel across multiple TickRequestContext instances
+     * 
+     * @param asyncContainer The Cosmos container to query
+     * @param querySpec The SQL query specification
+     * @param queryOptions The query options including FeedRange
+     * @param continuationToken The continuation token for pagination (null for first page)
+     * @param pageSize The size of the page to fetch
+     * @return PageResult containing ticks, continuation token, and diagnostics, or null if no more results
+     */
+    private PageResult fetchNextPage(
+            CosmosAsyncContainer asyncContainer,
+            SqlQuerySpec querySpec,
+            CosmosQueryRequestOptions queryOptions,
+            String continuationToken,
+            int pageSize) {
+
+        try {
+            // Execute query synchronously using block() with FeedRange
+            var page = asyncContainer.queryItems(querySpec, queryOptions, Tick.class)
+                    .byPage(continuationToken, pageSize)
+                    .blockFirst();
+
+            if (page != null && !page.getResults().isEmpty()) {
+                return new PageResult(
+                        page.getResults(),
+                        page.getContinuationToken(),
+                        page.getCosmosDiagnostics() != null ? page.getCosmosDiagnostics().getDiagnosticsContext() : null
+                );
+            } else if (page != null) {
+                // Page exists but is empty, return with continuation token if available
+                return new PageResult(
+                        new ArrayList<>(),
+                        page.getContinuationToken(),
+                        page.getCosmosDiagnostics() != null ? page.getCosmosDiagnostics().getDiagnosticsContext() : null
+                );
+            }
+            
+            return null; // No more results
+
+        } catch (CosmosException e) {
+            logger.error("Cosmos exception during page fetch: {}", e.getMessage(), e);
+            throw e;
+        } catch (Exception e) {
+            logger.error("Error during page fetch: {}", e.getMessage(), e);
     private SqlQuerySpec getSqlQuerySpecForFeedRange(
             String tickIdentifier,
             int shardId,
