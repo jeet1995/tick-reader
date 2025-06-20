@@ -5,7 +5,9 @@ import com.azure.cosmos.CosmosAsyncContainer;
 import com.azure.cosmos.CosmosDiagnostics;
 import com.azure.cosmos.CosmosException;
 import com.azure.cosmos.implementation.Configs;
+import com.azure.cosmos.models.CosmosQueryRequestOptions;
 import com.azure.cosmos.models.FeedResponse;
+import com.azure.cosmos.models.PartitionKey;
 import com.azure.cosmos.models.SqlParameter;
 import com.azure.cosmos.models.SqlQuerySpec;
 import com.tickreader.config.CosmosDbAccount;
@@ -41,23 +43,9 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
     private final ExecutorService queryExecutorService;
     private final ExecutorService priorityQueueExecutorService;
     private final int pageSize = 800;
-    private final int concurrency = Configs.getCPUCnt();
+    private final int concurrency = Configs.getCPUCnt() * 10;
 
-    private final Comparator<Tick> tickComparatorWithPinStartAsTrue = (t1, t2) -> {
-        if (t1.getMessageTimestamp().equals(t2.getMessageTimestamp())) {
-            return Long.compare(t2.getRecordkey(), t1.getRecordkey());
-        }
-        return Long.compare(t2.getMessageTimestamp(), t1.getMessageTimestamp());
-    };
-
-    private final Comparator<Tick> getTickComparatorWithPinStartAsFalse = (t1, t2) -> {
-        if (t1.getMessageTimestamp().equals(t2.getMessageTimestamp())) {
-            return Long.compare(t1.getRecordkey(), t2.getRecordkey());
-        }
-        return Long.compare(t1.getMessageTimestamp(), t2.getMessageTimestamp());
-    };
-
-    public FeedRangeBackupTicksServiceImpl(RicBasedCosmosClientFactory clientFactory, 
+    public FeedRangeBackupTicksServiceImpl(RicBasedCosmosClientFactory clientFactory,
                                          CosmosDbAccountConfiguration cosmosDbAccountConfiguration) {
         this.clientFactory = clientFactory;
         this.cosmosDbAccountConfiguration = cosmosDbAccountConfiguration;
@@ -94,7 +82,7 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
             LocalDateTime newStartTime = startTime.isAfter(endTime) ? endTime : startTime;
             LocalDateTime newEndTime = endTime.isBefore(startTime) ? startTime : endTime;
 
-            Map<String, TickRequestContext> tickRequestContexts = buildTickRequestContexts(rics, newStartTime, newEndTime);
+            List<TickRequestContextPerPartitionKey> tickRequestContexts = buildTickRequestContexts(rics, newStartTime, newEndTime);
 
             return executeQueryWithTopNSorted(
                     tickRequestContexts,
@@ -106,12 +94,13 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
         }, queryExecutorService);
     }
 
-    private Map<String, TickRequestContext> buildTickRequestContexts(
+    private List<TickRequestContextPerPartitionKey> buildTickRequestContexts(
             List<String> rics, 
             LocalDateTime startTime, 
             LocalDateTime endTime) {
         
-        Map<String, TickRequestContext> tickRequestContexts = new HashMap<>();
+        List<TickRequestContextPerPartitionKey> tickRequestContexts = new ArrayList<>();
+        int shardCount = this.cosmosDbAccountConfiguration.getShardCountPerRic();
 
         for (String ric : rics) {
             int seed = 42;
@@ -142,18 +131,18 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
                         .getContainer(cosmosDbAccount.getContainerNamePrefix() + date + cosmosDbAccount.getContainerNameSuffix());
 
                 String tickIdentifier = TickServiceUtils.constructTickIdentifierPrefix(ric, date);
-                String contextKey = cosmosDbAccount.getAccountUri() + "_" + date;
 
-                tickRequestContexts.putIfAbsent(contextKey, new TickRequestContext(
-                        asyncContainer,
-                        new ArrayList<>(),
-                        date,
-                        dateFormat
-                ));
+                for (int i = 1; i <= shardCount; i++) {
+                    String partitionKey = tickIdentifier + "|" + i;
 
-                TickRequestContext context = tickRequestContexts.get(contextKey);
+                    TickRequestContextPerPartitionKey tickRequestContext = new TickRequestContextPerPartitionKey(
+                            asyncContainer,
+                            partitionKey,
+                            date,
+                            dateFormat);
 
-                context.getTickIdentifiers().add(tickIdentifier);
+                    tickRequestContexts.add(tickRequestContext);
+                }
             }
         }
 
@@ -161,7 +150,7 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
     }
 
     private TickResponse executeQueryWithTopNSorted(
-            Map<String, TickRequestContext> tickRequestContexts,
+            List<TickRequestContextPerPartitionKey> tickRequestContexts,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
@@ -176,10 +165,10 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
         List<Tick> resultTicks = new ArrayList<>();
         ConcurrentHashMap<String, FeedResponse<Tick>> feedResponseCache = new ConcurrentHashMap<>();
 
-        while (resultTicks.size() < totalTicks && !tickRequestContexts.values().stream().allMatch(tickRequestContext -> tickRequestContext.getContinuationToken() != null && tickRequestContext.getContinuationToken().equals("drained"))) {
+        while (resultTicks.size() < totalTicks && !tickRequestContexts.stream().allMatch(tickRequestContext -> tickRequestContext.getContinuationToken() != null && tickRequestContext.getContinuationToken().equals("drained"))) {
             try {
                 // Create tasks for each FeedRange context
-                List<CompletableFuture<Void>> tasks = tickRequestContexts.values().stream()
+                List<CompletableFuture<Void>> tasks = tickRequestContexts.stream()
                         .map(context -> CompletableFuture.runAsync(() ->
                                         fetchNextPage(context, docTypes, startTime, endTime, pinStart, feedResponseCache),
                                 queryExecutorService))
@@ -206,7 +195,7 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
     }
 
     private void fetchNextPage(
-            TickRequestContext tickRequestContext,
+            TickRequestContextPerPartitionKey tickRequestContext,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
@@ -214,9 +203,11 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
             ConcurrentHashMap<String, FeedResponse<Tick>> feedResponseCache) {
 
         CosmosAsyncContainer asyncContainer = tickRequestContext.getAsyncContainer();
+        CosmosQueryRequestOptions queryRequestOptions = new CosmosQueryRequestOptions();
+
+        queryRequestOptions.setPartitionKey(new PartitionKey(tickRequestContext.getTickIdentifier()));
 
         SqlQuerySpec querySpec = tickRequestContext.getSqlQuerySpec() != null ? tickRequestContext.getSqlQuerySpec() : getSqlQuerySpec(
-                tickRequestContext.getTickIdentifiers(),
                 docTypes,
                 startTime,
                 endTime,
@@ -234,7 +225,7 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
         }
 
         try {
-            FeedResponse<Tick> response = asyncContainer.queryItems(querySpec, Tick.class)
+            FeedResponse<Tick> response = asyncContainer.queryItems(querySpec, queryRequestOptions, Tick.class)
                     .byPage(continuationToken, pageSize)
                     .next()
                     .block();
@@ -253,7 +244,6 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
     }
 
     private SqlQuerySpec getSqlQuerySpec(
-            List<String> tickIdentifiers,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
@@ -267,28 +257,6 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
         long queryEndTime = !endTime.isAfter(localDate.atTime(23, 59, 59, 999_999_999)) ? endTime.toInstant(ZoneOffset.UTC).toEpochMilli() * 1_000_000L : localDate.atTime(23, 59, 59, 999_999_999).toInstant(ZoneOffset.UTC).toEpochMilli() * 1_000_000L;
 
         List<SqlParameter> parameters = new ArrayList<>();
-
-        StringBuilder sb = new StringBuilder("(");
-
-        int shardCount = this.cosmosDbAccountConfiguration.getShardCountPerRic();
-
-        int maxParamId = tickIdentifiers.size() * shardCount;
-
-        for (int i = 1; i <= maxParamId; i++) {
-
-            String param = "@pk" + i;
-            sb.append(param);
-
-            String tickIdentifier = tickIdentifiers.get((i - 1) / shardCount);
-
-            parameters.add(new SqlParameter(param, tickIdentifier + "|" + ((i % shardCount) + 1)));
-
-            if (i < maxParamId) {
-                sb.append(", ");
-            }
-        }
-
-        sb.append(")");
 
         parameters.add(new SqlParameter("@startTime", queryStartTime));
         parameters.add(new SqlParameter("@endTime", queryEndTime));
@@ -313,12 +281,12 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
         docTypePlaceholders.append(")");
 
         if (pinStart) {
-            String query = "SELECT * FROM C WHERE C.pk IN " + sb + " AND C.docType IN " + docTypePlaceholders +
+            String query = "SELECT * FROM C WHERE C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp DESC, C.recordkey DESC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
-            String query = "SELECT * FROM C WHERE C.pk IN " + sb + " AND C.docType IN " + docTypePlaceholders +
+            String query = "SELECT * FROM C WHERE C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp ASC, C.recordkey ASC";
 
             return new SqlQuerySpec(query, parameters);

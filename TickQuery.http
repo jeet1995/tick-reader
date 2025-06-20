@@ -1,1 +1,1 @@
-GET http://localhost:8080/ticks/sort=messageTimestamp&recordKey?rics=AAPL&docTypes=TAS&totalTicks=10000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z
+GET http://localhost:8080/ticks/sort=messageTimestamp&recordKey?rics=GOOGL&docTypes=TAS&totalTicks=10000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z
