@@ -2,6 +2,7 @@ package com.tickreader.service.impl;
 
 import com.azure.cosmos.CosmosAsyncClient;
 import com.azure.cosmos.CosmosAsyncContainer;
+import com.azure.cosmos.CosmosDiagnostics;
 import com.azure.cosmos.CosmosDiagnosticsContext;
 import com.azure.cosmos.CosmosException;
 import com.azure.cosmos.implementation.Configs;
@@ -213,10 +214,10 @@ public class TicksServiceImpl implements TicksService {
                     logger.info("Execution ended at: {}", executionEndTime.get());
                 }).subscribeOn(Schedulers.boundedElastic()).blockLast();
 
-        List<CosmosDiagnosticsContext> diagnosticsContexts = new ArrayList<>();
+        List<CosmosDiagnostics> diagnosticsContexts = new ArrayList<>();
 
         for (TickRequestContext tickRequestContext : tickRequestContexts.values()) {
-            diagnosticsContexts.addAll(tickRequestContext.getDiagnosticsContexts());
+            diagnosticsContexts.addAll(tickRequestContext.getCosmosDiagnosticsList());
         }
 
         List<Tick> ticks = ticksPq == null ? new ArrayList<>() : new ArrayList<>(ticksPq);
@@ -348,7 +349,7 @@ public class TicksServiceImpl implements TicksService {
                     tickRequestContext.setContinuationToken(page.getContinuationToken());
 
                     if (page.getCosmosDiagnostics() != null) {
-                        tickRequestContext.addDiagnosticsContext(page.getCosmosDiagnostics().getDiagnosticsContext());
+                        tickRequestContext.addCosmosDiagnostics(page.getCosmosDiagnostics());
                     }
 
                     if (page.getContinuationToken() == null) {

@@ -2,12 +2,10 @@ package com.tickreader.service.impl;
 
 import com.azure.cosmos.CosmosAsyncClient;
 import com.azure.cosmos.CosmosAsyncContainer;
-import com.azure.cosmos.CosmosDiagnosticsContext;
+import com.azure.cosmos.CosmosDiagnostics;
 import com.azure.cosmos.CosmosException;
 import com.azure.cosmos.implementation.Configs;
-import com.azure.cosmos.models.CosmosQueryRequestOptions;
-import com.azure.cosmos.models.FeedRange;
-import com.azure.cosmos.models.PartitionKey;
+import com.azure.cosmos.models.FeedResponse;
 import com.azure.cosmos.models.SqlParameter;
 import com.azure.cosmos.models.SqlQuerySpec;
 import com.tickreader.config.CosmosDbAccount;
@@ -15,7 +13,7 @@ import com.tickreader.config.CosmosDbAccountConfiguration;
 import com.tickreader.config.RicBasedCosmosClientFactory;
 import com.tickreader.dto.TickResponse;
 import com.tickreader.entity.Tick;
-import com.tickreader.service.BackupTicksService;
+import com.tickreader.service.TicksService;
 import com.tickreader.service.utils.TickServiceUtils;
 import org.apache.spark.unsafe.hash.Murmur3_x86_32;
 import org.apache.spark.unsafe.types.UTF8String;
@@ -34,7 +32,7 @@ import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 @Service
-public class FeedRangeBackupTicksServiceImpl implements BackupTicksService {
+public class FeedRangeBackupTicksServiceImpl implements TicksService {
 
     private final static Logger logger = LoggerFactory.getLogger(FeedRangeBackupTicksServiceImpl.class);
 
@@ -42,7 +40,7 @@ public class FeedRangeBackupTicksServiceImpl implements BackupTicksService {
     private final CosmosDbAccountConfiguration cosmosDbAccountConfiguration;
     private final ExecutorService queryExecutorService;
     private final ExecutorService priorityQueueExecutorService;
-    private final int pageSize = 1000;
+    private final int pageSize = 800;
     private final int concurrency = Configs.getCPUCnt();
 
     private final Comparator<Tick> tickComparatorWithPinStartAsTrue = (t1, t2) -> {
@@ -84,8 +82,7 @@ public class FeedRangeBackupTicksServiceImpl implements BackupTicksService {
         }
     }
 
-    @Override
-    public CompletableFuture<TickResponse> getTicksAsync(
+    private CompletableFuture<TickResponse> getTicksAsync(
             List<String> rics,
             List<String> docTypes,
             int totalTicks,
@@ -97,10 +94,10 @@ public class FeedRangeBackupTicksServiceImpl implements BackupTicksService {
             LocalDateTime newStartTime = startTime.isAfter(endTime) ? endTime : startTime;
             LocalDateTime newEndTime = endTime.isBefore(startTime) ? startTime : endTime;
 
-            Map<String, FeedRangeTickRequestContext> feedRangeContexts = buildFeedRangeContexts(rics, newStartTime, newEndTime);
-            
-            return executeQueryWithFeedRanges(
-                    feedRangeContexts,
+            Map<String, TickRequestContext> tickRequestContexts = buildTickRequestContexts(rics, newStartTime, newEndTime);
+
+            return executeQueryWithTopNSorted(
+                    tickRequestContexts,
                     docTypes,
                     newStartTime,
                     newEndTime,
@@ -109,12 +106,12 @@ public class FeedRangeBackupTicksServiceImpl implements BackupTicksService {
         }, queryExecutorService);
     }
 
-    private Map<String, FeedRangeTickRequestContext> buildFeedRangeContexts(
+    private Map<String, TickRequestContext> buildTickRequestContexts(
             List<String> rics, 
             LocalDateTime startTime, 
             LocalDateTime endTime) {
         
-        Map<String, FeedRangeTickRequestContext> feedRangeContexts = new HashMap<>();
+        Map<String, TickRequestContext> tickRequestContexts = new HashMap<>();
 
         for (String ric : rics) {
             int seed = 42;
@@ -145,30 +142,26 @@ public class FeedRangeBackupTicksServiceImpl implements BackupTicksService {
                         .getContainer(cosmosDbAccount.getContainerNamePrefix() + date + cosmosDbAccount.getContainerNameSuffix());
 
                 String tickIdentifier = TickServiceUtils.constructTickIdentifierPrefix(ric, date);
+                String contextKey = cosmosDbAccount.getAccountUri() + "_" + date;
 
-                // Create FeedRange contexts for each shard
-                int shardCount = this.cosmosDbAccountConfiguration.getShardCountPerRic();
-                for (int shardId = 1; shardId <= shardCount; shardId++) {
-                    String contextKey = String.format("%s_%s_%d", hashIdForRic, date, shardId);
-                    
-                    FeedRangeTickRequestContext context = new FeedRangeTickRequestContext(
-                            asyncContainer,
-                            tickIdentifier,
-                            shardId,
-                            date,
-                            dateFormat
-                    );
-                    
-                    feedRangeContexts.put(contextKey, context);
-                }
+                tickRequestContexts.putIfAbsent(contextKey, new TickRequestContext(
+                        asyncContainer,
+                        new ArrayList<>(),
+                        date,
+                        dateFormat
+                ));
+
+                TickRequestContext context = tickRequestContexts.get(contextKey);
+
+                context.getTickIdentifiers().add(tickIdentifier);
             }
         }
 
-        return feedRangeContexts;
+        return tickRequestContexts;
     }
 
-    private TickResponse executeQueryWithFeedRanges(
-            Map<String, FeedRangeTickRequestContext> feedRangeContexts,
+    private TickResponse executeQueryWithTopNSorted(
+            Map<String, TickRequestContext> tickRequestContexts,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
@@ -178,256 +171,89 @@ public class FeedRangeBackupTicksServiceImpl implements BackupTicksService {
         Instant executionStartTime = Instant.now();
         logger.info("Execution started at: {}", executionStartTime);
 
-        List<CosmosDiagnosticsContext> allDiagnosticsContexts = Collections.synchronizedList(new ArrayList<>());
-        
-        // Single-threaded priority queue for thread safety
-        PriorityQueue<Tick> priorityQueue = new PriorityQueue<>(
-                totalTicks, 
-                pinStart ? tickComparatorWithPinStartAsTrue : getTickComparatorWithPinStartAsFalse
-        );
+        List<CosmosDiagnostics> cosmosDiagnosticsList = Collections.synchronizedList(new ArrayList<>());
 
-        try {
-            // Create tasks for each FeedRange context
-            List<CompletableFuture<Void>> tasks = feedRangeContexts.values().stream()
-                    .map(context -> CompletableFuture.runAsync(() -> 
-                            processFeedRangeContext(context, docTypes, startTime, endTime, pinStart, 
-                                    priorityQueue, totalTicks, allDiagnosticsContexts), 
-                            queryExecutorService))
-                    .collect(Collectors.toList());
+        List<Tick> resultTicks = new ArrayList<>();
+        ConcurrentHashMap<String, FeedResponse<Tick>> feedResponseCache = new ConcurrentHashMap<>();
 
-            // Wait for all tasks to complete
-            CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
+        while (resultTicks.size() < totalTicks && !tickRequestContexts.values().stream().allMatch(tickRequestContext -> tickRequestContext.getContinuationToken() != null && tickRequestContext.getContinuationToken().equals("drained"))) {
+            try {
+                // Create tasks for each FeedRange context
+                List<CompletableFuture<Void>> tasks = tickRequestContexts.values().stream()
+                        .map(context -> CompletableFuture.runAsync(() ->
+                                        fetchNextPage(context, docTypes, startTime, endTime, pinStart, feedResponseCache),
+                                queryExecutorService))
+                        .collect(Collectors.toList());
 
-            // Convert PriorityQueue to List (single-threaded operation)
-            List<Tick> resultTicks = new ArrayList<>();
-            Tick tick;
-            while ((tick = priorityQueue.poll()) != null && resultTicks.size() < totalTicks) {
-                resultTicks.add(tick);
+                CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
+
+                resultTicks.addAll(findTopN(feedResponseCache.values().stream().collect(Collectors.toList()), totalTicks - resultTicks.size(), pinStart));
+
+                feedResponseCache.clear();
+
+            } catch (InterruptedException | ExecutionException e) {
+                logger.error("Error during query execution: {}", e.getMessage(), e);
+                throw new RuntimeException("Failed to execute queries", e);
             }
-
-            Instant executionEndTime = Instant.now();
-            logger.info("Execution ended at: {}", executionEndTime);
-
-            return new TickResponse(
-                    resultTicks,
-                    allDiagnosticsContexts,
-                    Duration.between(executionStartTime, executionEndTime));
-
-        } catch (InterruptedException | ExecutionException e) {
-            logger.error("Error during query execution: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to execute queries", e);
         }
+
+        Instant executionEndTime = Instant.now();
+
+        return new TickResponse(
+                resultTicks,
+                cosmosDiagnosticsList,
+                Duration.between(executionStartTime, executionEndTime));
     }
 
-    private void processFeedRangeContext(
-            FeedRangeTickRequestContext feedRangeContext,
+    private void fetchNextPage(
+            TickRequestContext tickRequestContext,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
             boolean pinStart,
-            PriorityQueue<Tick> priorityQueue,
-            int totalTicks,
-            List<CosmosDiagnosticsContext> allDiagnosticsContexts) {
+            ConcurrentHashMap<String, FeedResponse<Tick>> feedResponseCache) {
 
-        try {
-            SqlQuerySpec querySpec = getSqlQuerySpecForFeedRange(
-                    feedRangeContext.getTickIdentifier(),
-                    feedRangeContext.getShardId(),
-                    docTypes,
-                    startTime,
-                    endTime,
-                    feedRangeContext.getRequestDateAsString(),
-                    feedRangeContext.getDateFormat(),
-                    pinStart
-            );
+        CosmosAsyncContainer asyncContainer = tickRequestContext.getAsyncContainer();
 
-            // Create FeedRange for the specific shard
-            String partitionKeyValue = feedRangeContext.getTickIdentifier() + "|" + feedRangeContext.getShardId();
-            FeedRange feedRange = FeedRange.forLogicalPartition(new PartitionKey(partitionKeyValue));
-            
-            // Create query options with FeedRange
-            CosmosQueryRequestOptions queryOptions = new CosmosQueryRequestOptions();
-            queryOptions.setFeedRange(feedRange);
+        SqlQuerySpec querySpec = tickRequestContext.getSqlQuerySpec() != null ? tickRequestContext.getSqlQuerySpec() : getSqlQuerySpec(
+                tickRequestContext.getTickIdentifiers(),
+                docTypes,
+                startTime,
+                endTime,
+                tickRequestContext.getRequestDateAsString(),
+                tickRequestContext.getDateFormat(),
+                pinStart
+        );
 
-            // Execute fetchNextPage in parallel for pagination
-            List<Tick> allTicks = executeFetchNextPageInParallel(
-                    feedRangeContext.getAsyncContainer(),
-                    querySpec,
-                    queryOptions,
-                    feedRangeContext,
-                    allDiagnosticsContexts
-            );
-            
-            // Add ticks to priority queue using single-threaded executor
-            if (!allTicks.isEmpty()) {
-                CompletableFuture.runAsync(() -> {
-                    synchronized (priorityQueue) {
-                        for (Tick tick : allTicks) {
-                            if (priorityQueue.size() >= totalTicks) {
-                                // If queue is full, check if this tick should replace the worst one
-                                Tick head = priorityQueue.peek();
-                                if (head != null && shouldReplace(head, tick, pinStart)) {
-                                    priorityQueue.poll(); // Remove the worst tick
-                                    priorityQueue.offer(tick);
-                                }
-                            } else {
-                                priorityQueue.offer(tick);
-                            }
-                        }
-                    }
-                }, priorityQueueExecutorService).join(); // Wait for completion
-            }
+        tickRequestContext.setSqlQuerySpec(querySpec);
 
-        } catch (Exception e) {
-            logger.error("Error processing FeedRange context: {}", e.getMessage(), e);
-        }
-    }
+        String continuationToken = tickRequestContext.getContinuationToken();
 
-    /**
-     * Executes fetchNextPage calls in parallel for efficient pagination
-     * This method coordinates parallel execution of fetchNextPage across multiple pages
-     */
-    private List<Tick> executeFetchNextPageInParallel(
-            CosmosAsyncContainer asyncContainer,
-            SqlQuerySpec querySpec,
-            CosmosQueryRequestOptions queryOptions,
-            FeedRangeTickRequestContext feedRangeContext,
-            List<CosmosDiagnosticsContext> allDiagnosticsContexts) {
-
-        List<Tick> allTicks = Collections.synchronizedList(new ArrayList<>());
-        String continuationToken = null;
-        int maxParallelPages = 5; // Limit parallel page fetches to avoid overwhelming the system
-
-        try {
-            do {
-                // Create a batch of parallel fetchNextPage calls
-                List<CompletableFuture<PageResult>> pageFutures = new ArrayList<>();
-                
-                // Start with the current continuation token
-                String currentToken = continuationToken;
-                
-                // Create multiple parallel page fetch tasks
-                for (int i = 0; i < maxParallelPages; i++) {
-                    final String token = currentToken;
-                    CompletableFuture<PageResult> pageFuture = CompletableFuture.supplyAsync(() -> 
-                            fetchNextPage(asyncContainer, querySpec, queryOptions, token, pageSize), 
-                            queryExecutorService);
-                    
-                    pageFutures.add(pageFuture);
-                    
-                    // If we get a continuation token, prepare for the next batch
-                    if (currentToken != null) {
-                        // We'll update currentToken after getting the first result
-                        break;
-                    }
-                }
-
-                // Wait for all page fetches to complete
-                CompletableFuture<Void> allPagesFuture = CompletableFuture.allOf(
-                        pageFutures.toArray(new CompletableFuture[0])
-                );
-
-                // Process results
-                allPagesFuture.thenRun(() -> {
-                    for (CompletableFuture<PageResult> future : pageFutures) {
-                        try {
-                            PageResult result = future.get();
-                            if (result != null && result.getTicks() != null) {
-                                allTicks.addAll(result.getTicks());
-                                
-                                if (result.getDiagnosticsContext() != null) {
-                                    synchronized (allDiagnosticsContexts) {
-                                        allDiagnosticsContexts.add(result.getDiagnosticsContext());
-                                    }
-                                }
-                            }
-                        } catch (Exception e) {
-                            logger.error("Error processing page result: {}", e.getMessage(), e);
-                        }
-                    }
-                }).join();
-
-                // Update continuation token for next iteration
-                // Get the continuation token from the first successful result
-                for (CompletableFuture<PageResult> future : pageFutures) {
-                    try {
-                        PageResult result = future.get();
-                        if (result != null && result.getContinuationToken() != null) {
-                            continuationToken = result.getContinuationToken();
-                            break;
-                        }
-                    } catch (Exception e) {
-                        // Continue to next future
-                    }
-                }
-
-            } while (continuationToken != null);
-
-        } catch (CosmosException e) {
-            if (TickServiceUtils.isResourceNotFound(e)) {
-                logger.warn("FeedRange {} for container {} does not have any records!", 
-                        feedRangeContext.getShardId(), asyncContainer.getId());
-            } else {
-                logger.error("Cosmos exception during parallel page fetch: {}", e.getMessage(), e);
-                throw e;
-            }
-        } catch (Exception e) {
-            logger.error("Error during parallel page fetch: {}", e.getMessage(), e);
-            throw new RuntimeException("Parallel page fetch failed", e);
+        if (continuationToken != null && continuationToken.equals("drained")) {
+            return;
         }
 
-        return new ArrayList<>(allTicks);
-    }
-
-    /**
-     * Fetches the next page of results from Cosmos DB
-     * This method is designed to be called in parallel across multiple TickRequestContext instances
-     * 
-     * @param asyncContainer The Cosmos container to query
-     * @param querySpec The SQL query specification
-     * @param queryOptions The query options including FeedRange
-     * @param continuationToken The continuation token for pagination (null for first page)
-     * @param pageSize The size of the page to fetch
-     * @return PageResult containing ticks, continuation token, and diagnostics, or null if no more results
-     */
-    private PageResult fetchNextPage(
-            CosmosAsyncContainer asyncContainer,
-            SqlQuerySpec querySpec,
-            CosmosQueryRequestOptions queryOptions,
-            String continuationToken,
-            int pageSize) {
-
         try {
-            // Execute query synchronously using block() with FeedRange
-            var page = asyncContainer.queryItems(querySpec, queryOptions, Tick.class)
+            FeedResponse<Tick> response = asyncContainer.queryItems(querySpec, Tick.class)
                     .byPage(continuationToken, pageSize)
-                    .blockFirst();
+                    .next()
+                    .block();
 
-            if (page != null && !page.getResults().isEmpty()) {
-                return new PageResult(
-                        page.getResults(),
-                        page.getContinuationToken(),
-                        page.getCosmosDiagnostics() != null ? page.getCosmosDiagnostics().getDiagnosticsContext() : null
-                );
-            } else if (page != null) {
-                // Page exists but is empty, return with continuation token if available
-                return new PageResult(
-                        new ArrayList<>(),
-                        page.getContinuationToken(),
-                        page.getCosmosDiagnostics() != null ? page.getCosmosDiagnostics().getDiagnosticsContext() : null
-                );
+            if (response != null) {
+                tickRequestContext.setContinuationToken(response.getContinuationToken() != null ? response.getContinuationToken() : "drained");
+                tickRequestContext.addCosmosDiagnostics(response.getCosmosDiagnostics());
+                feedResponseCache.put(tickRequestContext.getId(), response);
             }
-            
-            return null; // No more results
-
         } catch (CosmosException e) {
             logger.error("Cosmos exception during page fetch: {}", e.getMessage(), e);
             throw e;
         } catch (Exception e) {
             logger.error("Error during page fetch: {}", e.getMessage(), e);
-    private SqlQuerySpec getSqlQuerySpecForFeedRange(
-            String tickIdentifier,
-            int shardId,
+        }
+    }
+
+    private SqlQuerySpec getSqlQuerySpec(
+            List<String> tickIdentifiers,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
@@ -437,72 +263,99 @@ public class FeedRangeBackupTicksServiceImpl implements BackupTicksService {
 
         LocalDate localDate = LocalDate.parse(localDateAsString, DateTimeFormatter.ofPattern(format));
 
-        long queryStartTime = !startTime.isBefore(localDate.atStartOfDay()) ? 
-                startTime.toInstant(ZoneOffset.UTC).toEpochMilli() * 1_000_000L : 
-                localDate.atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli() * 1_000_000L;
-        
-        long queryEndTime = !endTime.isAfter(localDate.atTime(23, 59, 59, 999_999_999)) ? 
-                endTime.toInstant(ZoneOffset.UTC).toEpochMilli() * 1_000_000L : 
-                localDate.atTime(23, 59, 59, 999_999_999).toInstant(ZoneOffset.UTC).toEpochMilli() * 1_000_000L;
+        long queryStartTime = !startTime.isBefore(localDate.atStartOfDay()) ? startTime.toInstant(ZoneOffset.UTC).toEpochMilli() * 1_000_000L : localDate.atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli() * 1_000_000L;
+        long queryEndTime = !endTime.isAfter(localDate.atTime(23, 59, 59, 999_999_999)) ? endTime.toInstant(ZoneOffset.UTC).toEpochMilli() * 1_000_000L : localDate.atTime(23, 59, 59, 999_999_999).toInstant(ZoneOffset.UTC).toEpochMilli() * 1_000_000L;
 
         List<SqlParameter> parameters = new ArrayList<>();
 
-        // Single partition key for FeedRange query
-        String partitionKey = tickIdentifier + "|" + shardId;
-        parameters.add(new SqlParameter("@pk", partitionKey));
+        StringBuilder sb = new StringBuilder("(");
+
+        int shardCount = this.cosmosDbAccountConfiguration.getShardCountPerRic();
+
+        int maxParamId = tickIdentifiers.size() * shardCount;
+
+        for (int i = 1; i <= maxParamId; i++) {
+
+            String param = "@pk" + i;
+            sb.append(param);
+
+            String tickIdentifier = tickIdentifiers.get((i - 1) / shardCount);
+
+            parameters.add(new SqlParameter(param, tickIdentifier + "|" + ((i % shardCount) + 1)));
+
+            if (i < maxParamId) {
+                sb.append(", ");
+            }
+        }
+
+        sb.append(")");
+
         parameters.add(new SqlParameter("@startTime", queryStartTime));
         parameters.add(new SqlParameter("@endTime", queryEndTime));
 
-        StringBuilder docTypePlaceholders = new StringBuilder("(");
+        StringBuilder docTypePlaceholders = new StringBuilder();
+
+        docTypePlaceholders.append("(");
+
         for (int i = 0; i < docTypes.size(); i++) {
+
             String param = "@docType" + i;
+
             parameters.add(new SqlParameter(param, docTypes.get(i)));
+
             docTypePlaceholders.append(param);
+
             if (i < docTypes.size() - 1) {
                 docTypePlaceholders.append(", ");
             }
         }
+
         docTypePlaceholders.append(")");
 
-        String query;
         if (pinStart) {
-            query = "SELECT * FROM C WHERE C.pk = @pk AND C.docType IN " + docTypePlaceholders +
+            String query = "SELECT * FROM C WHERE C.pk IN " + sb + " AND C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp DESC, C.recordkey DESC";
-        } else {
-            query = "SELECT * FROM C WHERE C.pk = @pk AND C.docType IN " + docTypePlaceholders +
-                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp ASC, C.recordkey ASC";
-        }
 
-        return new SqlQuerySpec(query, parameters);
+            return new SqlQuerySpec(query, parameters);
+        } else {
+            String query = "SELECT * FROM C WHERE C.pk IN " + sb + " AND C.docType IN " + docTypePlaceholders +
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp ASC, C.recordkey ASC";
+
+            return new SqlQuerySpec(query, parameters);
+        }
     }
 
-    // Inner class for FeedRange tick request context
-    private static class FeedRangeTickRequestContext {
-        private final CosmosAsyncContainer asyncContainer;
-        private final String tickIdentifier;
-        private final int shardId;
-        private final String requestDateAsString;
-        private final String dateFormat;
-        private final List<CosmosDiagnosticsContext> diagnosticsContexts = new ArrayList<>();
+    public List<Tick> findTopN(List<FeedResponse<Tick>> responses, int topN, boolean pinStart) {
+        PriorityQueue<TickEntry> globalOrderedTicks = new PriorityQueue<>();
 
-        public FeedRangeTickRequestContext(CosmosAsyncContainer asyncContainer, String tickIdentifier, 
-                                         int shardId, String requestDateAsString, String dateFormat) {
-            this.asyncContainer = asyncContainer;
-            this.tickIdentifier = tickIdentifier;
-            this.shardId = shardId;
-            this.requestDateAsString = requestDateAsString;
-            this.dateFormat = dateFormat;
+        for (int i = 0; i < responses.size(); i++) {
+            List<Tick> ticks = responses.get(i).getResults();
+
+            if (ticks != null && !ticks.isEmpty()) {
+                int firstIndex = 0;
+                globalOrderedTicks.offer(new TickEntry(ticks.get(firstIndex), i, firstIndex, pinStart));
+            }
         }
 
-        public CosmosAsyncContainer getAsyncContainer() { return asyncContainer; }
-        public String getTickIdentifier() { return tickIdentifier; }
-        public int getShardId() { return shardId; }
-        public String getRequestDateAsString() { return requestDateAsString; }
-        public String getDateFormat() { return dateFormat; }
-        public List<CosmosDiagnosticsContext> getDiagnosticsContexts() { return diagnosticsContexts; }
-        public void addDiagnosticsContext(CosmosDiagnosticsContext context) { 
-            diagnosticsContexts.add(context); 
+        List<Tick> topNTicks = new ArrayList<>();
+
+        while (!globalOrderedTicks.isEmpty() && topNTicks.size() < topN) {
+
+            TickEntry tickEntry = globalOrderedTicks.poll();
+
+            topNTicks.add(tickEntry.getTick());
+
+            if (tickEntry.getElementIndex() < responses.get(tickEntry.getListIndex()).getResults().size() - 1) {
+                int nextElementIndex = tickEntry.getElementIndex() + 1;
+                int nextListIndex = tickEntry.getListIndex();
+
+                Tick nextTick = responses.get(nextListIndex).getResults().get(nextElementIndex);
+
+                globalOrderedTicks.offer(new TickEntry(nextTick, nextListIndex, nextElementIndex, pinStart));
+            }
         }
+
+        return topNTicks;
     }
 
     // Cleanup method for the executor services

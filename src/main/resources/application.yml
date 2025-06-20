@@ -15,3 +15,5 @@ ticks:
       containerNameSuffix: "y"
       hashId: 2
   shardCountPerRic: 8
+  implementation:
+    enabled: true
