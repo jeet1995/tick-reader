@@ -3,6 +3,7 @@ package com.tickreader.config;
 import com.tickreader.service.BackupTicksService;
 import com.tickreader.service.TicksService;
 import com.tickreader.service.impl.BackupTicksServiceImpl;
+import com.tickreader.service.impl.FeedRangeBackupTicksServiceImpl;
 import com.tickreader.service.impl.TicksServiceImpl;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -25,5 +26,12 @@ public class TickServiceConfiguration {
     public BackupTicksService backupTicksService(RicBasedCosmosClientFactory clientFactory, 
                                                CosmosDbAccountConfiguration cosmosDbAccountConfiguration) {
         return new BackupTicksServiceImpl(clientFactory, cosmosDbAccountConfiguration);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "tick.service.implementation", havingValue = "feedrange")
+    public BackupTicksService feedRangeBackupTicksService(RicBasedCosmosClientFactory clientFactory, 
+                                                         CosmosDbAccountConfiguration cosmosDbAccountConfiguration) {
+        return new FeedRangeBackupTicksServiceImpl(clientFactory, cosmosDbAccountConfiguration);
     }
 } 

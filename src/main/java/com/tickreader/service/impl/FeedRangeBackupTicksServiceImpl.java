@@ -5,6 +5,8 @@ import com.azure.cosmos.CosmosAsyncContainer;
 import com.azure.cosmos.CosmosDiagnosticsContext;
 import com.azure.cosmos.CosmosException;
 import com.azure.cosmos.implementation.Configs;
+import com.azure.cosmos.models.CosmosQueryRequestOptions;
+import com.azure.cosmos.models.FeedRange;
 import com.azure.cosmos.models.SqlParameter;
 import com.azure.cosmos.models.SqlQuerySpec;
 import com.tickreader.config.CosmosDbAccount;
@@ -31,14 +33,14 @@ import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 @Service
-public class BackupTicksServiceImpl implements BackupTicksService {
+public class FeedRangeBackupTicksServiceImpl implements BackupTicksService {
 
-    private final static Logger logger = LoggerFactory.getLogger(BackupTicksServiceImpl.class);
+    private final static Logger logger = LoggerFactory.getLogger(FeedRangeBackupTicksServiceImpl.class);
 
     private final RicBasedCosmosClientFactory clientFactory;
     private final CosmosDbAccountConfiguration cosmosDbAccountConfiguration;
-    private final ExecutorService executorService;
-    private final int prefetch = 20;
+    private final ExecutorService queryExecutorService;
+    private final ExecutorService priorityQueueExecutorService;
     private final int pageSize = 1000;
     private final int concurrency = Configs.getCPUCnt();
 
@@ -56,11 +58,12 @@ public class BackupTicksServiceImpl implements BackupTicksService {
         return Long.compare(t1.getMessageTimestamp(), t2.getMessageTimestamp());
     };
 
-    public BackupTicksServiceImpl(RicBasedCosmosClientFactory clientFactory, 
-                                 CosmosDbAccountConfiguration cosmosDbAccountConfiguration) {
+    public FeedRangeBackupTicksServiceImpl(RicBasedCosmosClientFactory clientFactory, 
+                                         CosmosDbAccountConfiguration cosmosDbAccountConfiguration) {
         this.clientFactory = clientFactory;
         this.cosmosDbAccountConfiguration = cosmosDbAccountConfiguration;
-        this.executorService = Executors.newFixedThreadPool(concurrency);
+        this.queryExecutorService = Executors.newFixedThreadPool(concurrency);
+        this.priorityQueueExecutorService = Executors.newSingleThreadExecutor();
     }
 
     @Override
@@ -93,24 +96,24 @@ public class BackupTicksServiceImpl implements BackupTicksService {
             LocalDateTime newStartTime = startTime.isAfter(endTime) ? endTime : startTime;
             LocalDateTime newEndTime = endTime.isBefore(startTime) ? startTime : endTime;
 
-            Map<String, TickRequestContext> tickRequestContexts = buildTickRequestContexts(rics, newStartTime, newEndTime);
+            Map<String, FeedRangeTickRequestContext> feedRangeContexts = buildFeedRangeContexts(rics, newStartTime, newEndTime);
             
-            return executeQueryUntilTopN(
-                    tickRequestContexts,
+            return executeQueryWithFeedRanges(
+                    feedRangeContexts,
                     docTypes,
                     newStartTime,
                     newEndTime,
                     pinStart,
                     totalTicks);
-        }, executorService);
+        }, queryExecutorService);
     }
 
-    private Map<String, TickRequestContext> buildTickRequestContexts(
+    private Map<String, FeedRangeTickRequestContext> buildFeedRangeContexts(
             List<String> rics, 
             LocalDateTime startTime, 
             LocalDateTime endTime) {
         
-        Map<String, TickRequestContext> tickRequestContexts = new HashMap<>();
+        Map<String, FeedRangeTickRequestContext> feedRangeContexts = new HashMap<>();
 
         for (String ric : rics) {
             int seed = 42;
@@ -142,23 +145,29 @@ public class BackupTicksServiceImpl implements BackupTicksService {
 
                 String tickIdentifier = TickServiceUtils.constructTickIdentifierPrefix(ric, date);
 
-                tickRequestContexts.putIfAbsent((hashIdForRic + date), new TickRequestContext(
-                        asyncContainer,
-                        new ArrayList<>(),
-                        date,
-                        dateFormat));
-
-                TickRequestContext tickRequestContext = tickRequestContexts.get((hashIdForRic + date));
-                List<String> tickIdentifiers = tickRequestContext.getTickIdentifiers();
-                tickIdentifiers.add(tickIdentifier);
+                // Create FeedRange contexts for each shard
+                int shardCount = this.cosmosDbAccountConfiguration.getShardCountPerRic();
+                for (int shardId = 1; shardId <= shardCount; shardId++) {
+                    String contextKey = String.format("%s_%s_%d", hashIdForRic, date, shardId);
+                    
+                    FeedRangeTickRequestContext context = new FeedRangeTickRequestContext(
+                            asyncContainer,
+                            tickIdentifier,
+                            shardId,
+                            date,
+                            dateFormat
+                    );
+                    
+                    feedRangeContexts.put(contextKey, context);
+                }
             }
         }
 
-        return tickRequestContexts;
+        return feedRangeContexts;
     }
 
-    private TickResponse executeQueryUntilTopN(
-            Map<String, TickRequestContext> tickRequestContexts,
+    private TickResponse executeQueryWithFeedRanges(
+            Map<String, FeedRangeTickRequestContext> feedRangeContexts,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
@@ -168,27 +177,30 @@ public class BackupTicksServiceImpl implements BackupTicksService {
         Instant executionStartTime = Instant.now();
         logger.info("Execution started at: {}", executionStartTime);
 
-        List<CosmosDiagnosticsContext> allDiagnosticsContexts = new ArrayList<>();
-        PriorityBlockingQueue<Tick> orderedTicks = new PriorityBlockingQueue<>(
+        List<CosmosDiagnosticsContext> allDiagnosticsContexts = Collections.synchronizedList(new ArrayList<>());
+        
+        // Single-threaded priority queue for thread safety
+        PriorityQueue<Tick> priorityQueue = new PriorityQueue<>(
                 totalTicks, 
                 pinStart ? tickComparatorWithPinStartAsTrue : getTickComparatorWithPinStartAsFalse
         );
 
         try {
-            // Create tasks for each tick request context
-            List<CompletableFuture<Void>> tasks = tickRequestContexts.values().stream()
+            // Create tasks for each FeedRange context
+            List<CompletableFuture<Void>> tasks = feedRangeContexts.values().stream()
                     .map(context -> CompletableFuture.runAsync(() -> 
-                            processTickRequestContext(context, docTypes, startTime, endTime, pinStart, orderedTicks, totalTicks, allDiagnosticsContexts), 
-                            executorService))
+                            processFeedRangeContext(context, docTypes, startTime, endTime, pinStart, 
+                                    priorityQueue, totalTicks, allDiagnosticsContexts), 
+                            queryExecutorService))
                     .collect(Collectors.toList());
 
             // Wait for all tasks to complete
             CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
 
-            // Convert PriorityBlockingQueue to List
+            // Convert PriorityQueue to List (single-threaded operation)
             List<Tick> resultTicks = new ArrayList<>();
             Tick tick;
-            while ((tick = orderedTicks.poll()) != null && resultTicks.size() < totalTicks) {
+            while ((tick = priorityQueue.poll()) != null && resultTicks.size() < totalTicks) {
                 resultTicks.add(tick);
             }
 
@@ -206,53 +218,58 @@ public class BackupTicksServiceImpl implements BackupTicksService {
         }
     }
 
-    private void processTickRequestContext(
-            TickRequestContext tickRequestContext,
+    private void processFeedRangeContext(
+            FeedRangeTickRequestContext feedRangeContext,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
             boolean pinStart,
-            PriorityBlockingQueue<Tick> orderedTicks,
+            PriorityQueue<Tick> priorityQueue,
             int totalTicks,
             List<CosmosDiagnosticsContext> allDiagnosticsContexts) {
 
         try {
-            SqlQuerySpec querySpec = getSqlQuerySpec(
-                    tickRequestContext.getTickIdentifiers(),
+            SqlQuerySpec querySpec = getSqlQuerySpecForFeedRange(
+                    feedRangeContext.getTickIdentifier(),
+                    feedRangeContext.getShardId(),
                     docTypes,
                     startTime,
                     endTime,
-                    tickRequestContext.getRequestDateAsString(),
-                    tickRequestContext.getDateFormat(),
+                    feedRangeContext.getRequestDateAsString(),
+                    feedRangeContext.getDateFormat(),
                     pinStart
             );
 
-            tickRequestContext.setSqlQuerySpec(querySpec);
-
-            // Execute query and collect results
-            List<Tick> ticks = executeQuery(tickRequestContext, docTypes, startTime, endTime, pinStart);
+            // Execute query with FeedRange
+            List<Tick> ticks = executeQueryWithFeedRange(feedRangeContext, querySpec);
             
-            // Add ticks to the priority queue
-            for (Tick tick : ticks) {
-                if (orderedTicks.size() >= totalTicks) {
-                    // If queue is full, check if this tick should replace the worst one
-                    Tick head = orderedTicks.peek();
-                    if (head != null && shouldReplace(head, tick, pinStart)) {
-                        orderedTicks.poll(); // Remove the worst tick
-                        orderedTicks.offer(tick);
+            // Add ticks to priority queue using single-threaded executor
+            if (!ticks.isEmpty()) {
+                CompletableFuture.runAsync(() -> {
+                    synchronized (priorityQueue) {
+                        for (Tick tick : ticks) {
+                            if (priorityQueue.size() >= totalTicks) {
+                                // If queue is full, check if this tick should replace the worst one
+                                Tick head = priorityQueue.peek();
+                                if (head != null && shouldReplace(head, tick, pinStart)) {
+                                    priorityQueue.poll(); // Remove the worst tick
+                                    priorityQueue.offer(tick);
+                                }
+                            } else {
+                                priorityQueue.offer(tick);
+                            }
+                        }
                     }
-                } else {
-                    orderedTicks.offer(tick);
-                }
+                }, priorityQueueExecutorService).join(); // Wait for completion
             }
 
             // Collect diagnostics
             synchronized (allDiagnosticsContexts) {
-                allDiagnosticsContexts.addAll(tickRequestContext.getDiagnosticsContexts());
+                allDiagnosticsContexts.addAll(feedRangeContext.getDiagnosticsContexts());
             }
 
         } catch (Exception e) {
-            logger.error("Error processing tick request context: {}", e.getMessage(), e);
+            logger.error("Error processing FeedRange context: {}", e.getMessage(), e);
         }
     }
 
@@ -264,28 +281,25 @@ public class BackupTicksServiceImpl implements BackupTicksService {
         }
     }
 
-    private List<Tick> executeQuery(
-            TickRequestContext tickRequestContext,
-            List<String> docTypes,
-            LocalDateTime startTime,
-            LocalDateTime endTime,
-            boolean pinStart) {
+    private List<Tick> executeQueryWithFeedRange(
+            FeedRangeTickRequestContext feedRangeContext,
+            SqlQuerySpec querySpec) {
 
-        CosmosAsyncContainer asyncContainer = tickRequestContext.getAsyncContainer();
+        CosmosAsyncContainer asyncContainer = feedRangeContext.getAsyncContainer();
         List<Tick> allTicks = new ArrayList<>();
         String continuationToken = null;
 
         try {
-            do {
-                SqlQuerySpec querySpec = tickRequestContext.getSqlQuerySpec();
-                if (continuationToken != null) {
-                    // For pagination, we need to modify the query or use a different approach
-                    // This is a simplified version - in practice you might need to handle pagination differently
-                    break;
-                }
+            // Create FeedRange for the specific shard
+            FeedRange feedRange = FeedRange.forLogicalPartition(feedRangeContext.getShardId());
+            
+            // Create query options with FeedRange
+            CosmosQueryRequestOptions queryOptions = new CosmosQueryRequestOptions();
+            queryOptions.setFeedRange(feedRange);
 
-                // Execute query synchronously using block() - this is the key difference from Reactor
-                var page = asyncContainer.queryItems(querySpec, Tick.class)
+            do {
+                // Execute query synchronously using block() with FeedRange
+                var page = asyncContainer.queryItems(querySpec, queryOptions, Tick.class)
                         .byPage(continuationToken, pageSize)
                         .blockFirst();
 
@@ -294,7 +308,7 @@ public class BackupTicksServiceImpl implements BackupTicksService {
                     allTicks.addAll(page.getResults());
 
                     if (page.getCosmosDiagnostics() != null) {
-                        tickRequestContext.addDiagnosticsContext(page.getCosmosDiagnostics().getDiagnosticsContext());
+                        feedRangeContext.addDiagnosticsContext(page.getCosmosDiagnostics().getDiagnosticsContext());
                     }
                 }
 
@@ -302,21 +316,23 @@ public class BackupTicksServiceImpl implements BackupTicksService {
 
         } catch (CosmosException e) {
             if (TickServiceUtils.isResourceNotFound(e)) {
-                logger.warn("Day : {} does not have any records!", asyncContainer.getId());
+                logger.warn("FeedRange {} for container {} does not have any records!", 
+                        feedRangeContext.getShardId(), asyncContainer.getId());
             } else {
-                logger.error("Cosmos exception during query execution: {}", e.getMessage(), e);
+                logger.error("Cosmos exception during FeedRange query execution: {}", e.getMessage(), e);
                 throw e;
             }
         } catch (Exception e) {
-            logger.error("Error during query execution: {}", e.getMessage(), e);
-            throw new RuntimeException("Query execution failed", e);
+            logger.error("Error during FeedRange query execution: {}", e.getMessage(), e);
+            throw new RuntimeException("FeedRange query execution failed", e);
         }
 
         return allTicks;
     }
 
-    private SqlQuerySpec getSqlQuerySpec(
-            List<String> tickIdentifiers,
+    private SqlQuerySpec getSqlQuerySpecForFeedRange(
+            String tickIdentifier,
+            int shardId,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
@@ -336,23 +352,9 @@ public class BackupTicksServiceImpl implements BackupTicksService {
 
         List<SqlParameter> parameters = new ArrayList<>();
 
-        StringBuilder sb = new StringBuilder("(");
-        int shardCount = this.cosmosDbAccountConfiguration.getShardCountPerRic();
-        int maxParamId = tickIdentifiers.size() * shardCount;
-
-        for (int i = 1; i <= maxParamId; i++) {
-            String param = "@pk" + i;
-            sb.append(param);
-
-            String tickIdentifier = tickIdentifiers.get((i - 1) / shardCount);
-            parameters.add(new SqlParameter(param, tickIdentifier + "|" + ((i % shardCount) + 1)));
-
-            if (i < maxParamId) {
-                sb.append(", ");
-            }
-        }
-        sb.append(")");
-
+        // Single partition key for FeedRange query
+        String partitionKey = tickIdentifier + "|" + shardId;
+        parameters.add(new SqlParameter("@pk", partitionKey));
         parameters.add(new SqlParameter("@startTime", queryStartTime));
         parameters.add(new SqlParameter("@endTime", queryEndTime));
 
@@ -369,26 +371,67 @@ public class BackupTicksServiceImpl implements BackupTicksService {
 
         String query;
         if (pinStart) {
-            query = "SELECT * FROM C WHERE C.pk IN " + sb + " AND C.docType IN " + docTypePlaceholders +
+            query = "SELECT * FROM C WHERE C.pk = @pk AND C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp DESC, C.recordkey DESC";
         } else {
-            query = "SELECT * FROM C WHERE C.pk IN " + sb + " AND C.docType IN " + docTypePlaceholders +
+            query = "SELECT * FROM C WHERE C.pk = @pk AND C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp ASC, C.recordkey ASC";
         }
 
         return new SqlQuerySpec(query, parameters);
     }
 
-    // Cleanup method for the executor service
+    // Inner class for FeedRange tick request context
+    private static class FeedRangeTickRequestContext {
+        private final CosmosAsyncContainer asyncContainer;
+        private final String tickIdentifier;
+        private final int shardId;
+        private final String requestDateAsString;
+        private final String dateFormat;
+        private final List<CosmosDiagnosticsContext> diagnosticsContexts = new ArrayList<>();
+
+        public FeedRangeTickRequestContext(CosmosAsyncContainer asyncContainer, String tickIdentifier, 
+                                         int shardId, String requestDateAsString, String dateFormat) {
+            this.asyncContainer = asyncContainer;
+            this.tickIdentifier = tickIdentifier;
+            this.shardId = shardId;
+            this.requestDateAsString = requestDateAsString;
+            this.dateFormat = dateFormat;
+        }
+
+        public CosmosAsyncContainer getAsyncContainer() { return asyncContainer; }
+        public String getTickIdentifier() { return tickIdentifier; }
+        public int getShardId() { return shardId; }
+        public String getRequestDateAsString() { return requestDateAsString; }
+        public String getDateFormat() { return dateFormat; }
+        public List<CosmosDiagnosticsContext> getDiagnosticsContexts() { return diagnosticsContexts; }
+        public void addDiagnosticsContext(CosmosDiagnosticsContext context) { 
+            diagnosticsContexts.add(context); 
+        }
+    }
+
+    // Cleanup method for the executor services
     public void shutdown() {
-        if (executorService != null && !executorService.isShutdown()) {
-            executorService.shutdown();
+        if (queryExecutorService != null && !queryExecutorService.isShutdown()) {
+            queryExecutorService.shutdown();
             try {
-                if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) {
-                    executorService.shutdownNow();
+                if (!queryExecutorService.awaitTermination(60, TimeUnit.SECONDS)) {
+                    queryExecutorService.shutdownNow();
                 }
             } catch (InterruptedException e) {
-                executorService.shutdownNow();
+                queryExecutorService.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
+        
+        if (priorityQueueExecutorService != null && !priorityQueueExecutorService.isShutdown()) {
+            priorityQueueExecutorService.shutdown();
+            try {
+                if (!priorityQueueExecutorService.awaitTermination(60, TimeUnit.SECONDS)) {
+                    priorityQueueExecutorService.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                priorityQueueExecutorService.shutdownNow();
                 Thread.currentThread().interrupt();
             }
         }
