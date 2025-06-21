@@ -21,6 +21,8 @@ import org.apache.spark.unsafe.hash.Murmur3_x86_32;
 import org.apache.spark.unsafe.types.UTF8String;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
@@ -44,7 +46,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
-@Service
+@Component
+@ConditionalOnProperty(name = "ticks.implementation", havingValue = "reactor")
 public class TicksServiceImpl implements TicksService {
 
     private final static Logger logger = LoggerFactory.getLogger(TicksServiceImpl.class);
@@ -290,12 +293,12 @@ public class TicksServiceImpl implements TicksService {
 
         if (pinStart) {
             String query = "SELECT * FROM C WHERE C.pk IN " + sb + " AND C.docType IN " + docTypePlaceholders +
-                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp DESC, C.recordkey DESC";
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.messageTimestamp DESC, C.recordkey DESC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
             String query = "SELECT * FROM C WHERE C.pk IN " + sb + " AND C.docType IN " + docTypePlaceholders +
-                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp ASC, C.recordkey ASC";
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.messageTimestamp ASC, C.recordkey ASC";
 
             return new SqlQuerySpec(query, parameters);
         }

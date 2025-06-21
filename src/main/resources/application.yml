@@ -7,6 +7,7 @@ ticks:
       containerNameFormat: "yyyyMMdd"
       containerNameSuffix: "y"
       hashId: 1
+      commaSeparatedPreferredRegions: ${COSMOSDB_PREFERRED_REGIONS_HASH_1}
     2:
       databaseName: ${DATABASE_NAME_HASH_2}
       accountUri: ${COSMOSDB_ACCOUNT_URI_HASH_2}
@@ -14,6 +15,6 @@ ticks:
       containerNameFormat: "yyyyMMdd"
       containerNameSuffix: "y"
       hashId: 2
+      commaSeparatedPreferredRegions: ${COSMOSDB_PREFERRED_REGIONS_HASH_2}
   shardCountPerRic: 8
-  implementation:
-    enabled: true
+  implementation: "completeablefuture"

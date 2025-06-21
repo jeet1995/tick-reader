@@ -21,7 +21,10 @@ import org.apache.spark.unsafe.hash.Murmur3_x86_32;
 import org.apache.spark.unsafe.types.UTF8String;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -33,7 +36,8 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
-@Service
+@Component
+@ConditionalOnProperty(name = "ticks.implementation", havingValue = "completeablefuture")
 public class FeedRangeBackupTicksServiceImpl implements TicksService {
 
     private final static Logger logger = LoggerFactory.getLogger(FeedRangeBackupTicksServiceImpl.class);
@@ -228,6 +232,24 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
             FeedResponse<Tick> response = asyncContainer.queryItems(querySpec, queryRequestOptions, Tick.class)
                     .byPage(continuationToken, pageSize)
                     .next()
+                    .onErrorResume(throwable -> {
+
+                        if (throwable instanceof CosmosException) {
+                            CosmosException cosmosException = (CosmosException) throwable;
+                            logger.error("Cosmos exception during page fetch: {}", cosmosException.getMessage(), cosmosException);
+
+                            if (TickServiceUtils.isResourceNotFound(cosmosException)) {
+                                logger.warn("Cosmos exception during page fetch: {}", cosmosException.getMessage());
+                                tickRequestContext.setContinuationToken("drained");
+                                logger.warn("No tick data found for date: {}", tickRequestContext.getRequestDateAsString());
+
+                                return Mono.empty();
+                            }
+                        }
+
+                        logger.error("Error during page fetch: {}", throwable.getMessage(), throwable);
+                        return Mono.error(throwable);
+                    })
                     .block();
 
             if (response != null) {
@@ -282,12 +304,12 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
 
         if (pinStart) {
             String query = "SELECT * FROM C WHERE C.docType IN " + docTypePlaceholders +
-                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp DESC, C.recordkey DESC";
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.messageTimestamp DESC, C.recordkey DESC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
             String query = "SELECT * FROM C WHERE C.docType IN " + docTypePlaceholders +
-                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp ASC, C.recordkey ASC";
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.messageTimestamp ASC, C.recordkey ASC";
 
             return new SqlQuerySpec(query, parameters);
         }
