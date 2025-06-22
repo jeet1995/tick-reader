@@ -195,6 +195,10 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
         Instant executionEndTime = Instant.now();
         logger.info("Execution of query with correlationId : {} finished in duration : {}", correlationId, Duration.between(executionStartTime, executionEndTime));
 
+        for (TickRequestContextPerPartitionKey tickRequestContext : tickRequestContexts) {
+            cosmosDiagnosticsList.addAll(tickRequestContext.getCosmosDiagnosticsList());
+        }
+
         return new TickResponse(
                 resultTicks,
                 cosmosDiagnosticsList,
