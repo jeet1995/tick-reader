@@ -23,7 +23,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
-import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
@@ -87,6 +86,7 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
             LocalDateTime newEndTime = endTime.isBefore(startTime) ? startTime : endTime;
 
             List<TickRequestContextPerPartitionKey> tickRequestContexts = buildTickRequestContexts(rics, newStartTime, newEndTime);
+            String correlationId = UUID.randomUUID().toString();
 
             return executeQueryWithTopNSorted(
                     tickRequestContexts,
@@ -94,7 +94,8 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
                     newStartTime,
                     newEndTime,
                     pinStart,
-                    totalTicks);
+                    totalTicks,
+                    correlationId);
         }, queryExecutorService);
     }
 
@@ -159,10 +160,11 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
             LocalDateTime startTime,
             LocalDateTime endTime,
             boolean pinStart,
-            int totalTicks) {
+            int totalTicks,
+            String correlationId) {
 
         Instant executionStartTime = Instant.now();
-        logger.info("Execution started at: {}", executionStartTime);
+        logger.info("Execution of query with correlationId : {} started at : {}", correlationId, executionStartTime);
 
         List<CosmosDiagnostics> cosmosDiagnosticsList = Collections.synchronizedList(new ArrayList<>());
 
@@ -191,6 +193,7 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
         }
 
         Instant executionEndTime = Instant.now();
+        logger.info("Execution of query with correlationId : {} finished in duration : {}", correlationId, Duration.between(executionStartTime, executionEndTime));
 
         return new TickResponse(
                 resultTicks,
