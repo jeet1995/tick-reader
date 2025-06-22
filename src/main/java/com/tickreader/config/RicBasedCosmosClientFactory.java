@@ -26,6 +26,7 @@ public class RicBasedCosmosClientFactory {
                         .endpoint(val.getAccountUri())
                         .credential(Configs.getAadTokenCredential()) // Replace with actual key or fetch from secure storage
                         .contentResponseOnWriteEnabled(true)
+                        .preferredRegions(val.getPreferredRegions())
                         .clientTelemetryConfig(TELEMETRY_CONFIG);
 
                 if (Configs.getConnectionMode().equalsIgnoreCase("direct")) {

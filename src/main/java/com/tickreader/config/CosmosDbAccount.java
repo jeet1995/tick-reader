@@ -1,5 +1,9 @@
 package com.tickreader.config;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 public class CosmosDbAccount {
 
     private final String databaseName;
@@ -8,14 +12,16 @@ public class CosmosDbAccount {
     private final String containerNameFormat;
     private final String containerNameSuffix;
     private final int hashId;
+    private final String commaSeparatedPreferredRegions;
 
-    public CosmosDbAccount(String databaseName, String accountUri, String containerNamePrefix, String containerNameFormat, String containerNameSuffix, int hashId) {
+    public CosmosDbAccount(String databaseName, String accountUri, String containerNamePrefix, String containerNameFormat, String containerNameSuffix, int hashId, String commaSeparatedPreferredRegions) {
         this.databaseName = databaseName;
         this.accountUri = accountUri;
         this.containerNamePrefix = containerNamePrefix;
         this.containerNameFormat = containerNameFormat;
         this.containerNameSuffix = containerNameSuffix;
         this.hashId = hashId;
+        this.commaSeparatedPreferredRegions = commaSeparatedPreferredRegions;
     }
 
     public String getDatabaseName() {
@@ -40,5 +46,14 @@ public class CosmosDbAccount {
 
     public int getHashId() {
         return this.hashId;
+    }
+
+    public List<String> getPreferredRegions() {
+
+        if (this.commaSeparatedPreferredRegions == null || this.commaSeparatedPreferredRegions.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        return Arrays.asList(this.commaSeparatedPreferredRegions.split(","));
     }
 }

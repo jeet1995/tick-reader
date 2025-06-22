@@ -6,12 +6,12 @@ A Spring Boot application that queries tick data given list of RICs and date ran
 
 ## System Properties and Environment Variables
 
-| System Property Name           | Environment Variable Name      | Default Value | Description                        |
-|--------------------------------|--------------------------------|---------------|------------------------------------|
-| COSMOS.CONNECTION_MODE         | COSMOS_CONNECTION_MODE         | LOW           | `GATEWAY`                          | The  connection mode which should be used when connecting to Cosmo DB. The possible values are `GATEWAY` (default) or `DIRECT`. The default value should be sufficient for this workload.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| COSMOS.AAD_MANAGED_IDENTITY_ID | COSMOS_AAD_MANAGED_IDENTITY_ID | HIGH          | Auto-Discovery                     | The client-id of the managed identity to be used - if not specified picks one based on DefaultAzureCredential logic - if specified, it will always use that identity.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| COSMOS.AAD_TENANT_ID           | COSMOS_AAD_TENANT_ID           | HIGH          | Auto-Discovery                     | The AAD tenant id for the Azure resources and identities.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| COSMOS.AAD_LOGIN_ENDPOINT      | COSMOS_AAD_LOGIN_ENDPOINT      | LOW           | https://login.microsoftonline.com/ | Only needs to be modified in non-public Azure clouds.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| System Property Name           | Environment Variable Name      | Default Value | Possible Value                     | Description                                                                                                                                                                               |
+|--------------------------------|--------------------------------|---------------|------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| COSMOS.CONNECTION_MODE         | COSMOS_CONNECTION_MODE         | LOW           | `GATEWAY`                          | The  connection mode which should be used when connecting to Cosmo DB. The possible values are `GATEWAY` (default) or `DIRECT`. The default value should be sufficient for this workload. |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| COSMOS.AAD_MANAGED_IDENTITY_ID | COSMOS_AAD_MANAGED_IDENTITY_ID | HIGH          | Auto-Discovery                     | The client-id of the managed identity to be used - if not specified picks one based on DefaultAzureCredential logic - if specified, it will always use that identity.                     |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| COSMOS.AAD_TENANT_ID           | COSMOS_AAD_TENANT_ID           | HIGH          | Auto-Discovery                     | The AAD tenant id for the Azure resources and identities.                                                                                                                                 |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| COSMOS.AAD_LOGIN_ENDPOINT      | COSMOS_AAD_LOGIN_ENDPOINT      | LOW           | https://login.microsoftonline.com/ | Only needs to be modified in non-public Azure clouds.                                                                                                                                     |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ## application.yml
 
@@ -29,6 +29,7 @@ ticks:
       containerNameFormat: "yyyyMMdd"
       containerNameSuffix: "y"
       hashId: 1
+      commaSeparatedPreferredRegions: ${COSMOSDB_PREFERRED_REGIONS_HASH_1}
     2:
       databaseName: ${DATABASE_NAME_HASH_2}
       accountUri: ${COSMOSDB_ACCOUNT_URI_HASH_2}
@@ -36,7 +37,9 @@ ticks:
       containerNameFormat: "yyyyMMdd"
       containerNameSuffix: "y"
       hashId: 2
+      commaSeparatedPreferredRegions: ${COSMOSDB_PREFERRED_REGIONS_HASH_2}
   shardCountPerRic: 8
+  implementation: "completeablefuture"
 ```
 
 ## Container Setup
@@ -549,7 +552,7 @@ mvn clean package
 ## Running the application
 
 ```
-java -jar target/tick-reader-app.jar
+java -jar -DCOSMOS.SWITCH_OFF_IO_THREAD_FOR_RESPONSE="true" target/tick-reader-app.jar
 ```
 
 # Executing requests

@@ -2,9 +2,10 @@ package com.tickreader.service.impl;
 
 import com.azure.cosmos.CosmosAsyncClient;
 import com.azure.cosmos.CosmosAsyncContainer;
+import com.azure.cosmos.CosmosDiagnostics;
 import com.azure.cosmos.CosmosDiagnosticsContext;
 import com.azure.cosmos.CosmosException;
-import com.azure.cosmos.models.CosmosQueryRequestOptions;
+import com.azure.cosmos.implementation.Configs;
 import com.azure.cosmos.models.SqlParameter;
 import com.azure.cosmos.models.SqlQuerySpec;
 import com.tickreader.config.CosmosDbAccount;
@@ -20,6 +21,8 @@ import org.apache.spark.unsafe.hash.Murmur3_x86_32;
 import org.apache.spark.unsafe.types.UTF8String;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
@@ -39,10 +42,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
-@Service
+@Component
+@ConditionalOnProperty(name = "ticks.implementation", havingValue = "reactor")
 public class TicksServiceImpl implements TicksService {
 
     private final static Logger logger = LoggerFactory.getLogger(TicksServiceImpl.class);
@@ -50,7 +55,9 @@ public class TicksServiceImpl implements TicksService {
     private final RicBasedCosmosClientFactory clientFactory;
     private final CosmosDbAccountConfiguration cosmosDbAccountConfiguration;
     private final ErrorHandlingStrategy errorHandlingStrategy;
-    private final CosmosQueryRequestOptions queryRequestOptions;
+    private final AtomicInteger prefetch = new AtomicInteger(20);
+    private final AtomicInteger pageSize = new AtomicInteger(1000);
+    private final AtomicInteger concurrency = new AtomicInteger(Configs.getCPUCnt());
 
     private final Comparator<Tick> tickComparatorWithPinStartAsTrue = (t1, t2) -> {
 
@@ -73,7 +80,6 @@ public class TicksServiceImpl implements TicksService {
         this.clientFactory = clientFactory;
         this.cosmosDbAccountConfiguration = cosmosDbAccountConfiguration;
         this.errorHandlingStrategy = new RetryOnSpecificExceptionStrategy();
-        this.queryRequestOptions = new CosmosQueryRequestOptions().setMaxDegreeOfParallelism(3000);
     }
 
     @Override
@@ -161,26 +167,63 @@ public class TicksServiceImpl implements TicksService {
             ConcurrentLinkedQueue<Tick> orderedTicks,
             int totalTicks) {
 
+        Sinks.Many<ConcurrentLinkedQueue<Tick>> sink = Sinks.many().multicast().onBackpressureBuffer();
+
         AtomicReference<Instant> executionStartTime = new AtomicReference<>(Instant.MIN);
         AtomicReference<Instant> executionEndTime = new AtomicReference<>(Instant.MAX);
 
-        ConcurrentLinkedQueue<Tick> ticksOrdered = bufferedAndOrderedFetcher(
-                tickRequestContexts, docTypes, orderedTicks, startTime, endTime, pinStart, totalTicks)
+        Flux<Object> dataFlux = Flux.defer(() -> bufferedAndOrderedFetcher(
+                tickRequestContexts, docTypes, orderedTicks, startTime, endTime, pinStart, totalTicks))
+                .flatMap(ticks -> {
+
+                    if (tickRequestContexts.isEmpty()) {
+                        sink.tryEmitComplete();
+                        return Flux.empty();
+                    }
+
+                    if (orderedTicks.size() < totalTicks) {
+                        logger.debug("Time now : {}, totalTicks: {}, orderedTicks.size(): {}", Instant.now(), totalTicks, orderedTicks.size());
+                        sink.tryEmitNext(ticks);
+                    } else {
+                        sink.tryEmitNext(ticks);
+                        sink.tryEmitComplete();
+                    }
+
+                    return Flux.empty();
+                }, concurrency.get(), prefetch.get())
+                .doOnTerminate(sink::tryEmitComplete)
+                .doOnComplete(sink::tryEmitComplete);
+
+        AtomicReference<Disposable> queryFluxRef = new AtomicReference<>();
+
+        ConcurrentLinkedQueue<Tick> ticksPq = sink
+                .asFlux()
+                .publishOn(Schedulers.boundedElastic())
                 .doOnSubscribe(subscription -> {
+                    logger.debug("Subscription started for fetching ticks with totalTicks: {}", totalTicks);
+                    queryFluxRef.set(dataFlux.subscribe());
                     executionStartTime.set(Instant.now());
+                    logger.info("Execution started at: {}", executionStartTime.get());
                 })
-                .doOnComplete(() -> {
+                .doOnError(throwable -> {
+                    logger.error("Error occurred while fetching ticks: {}", throwable.getMessage(), throwable);
+                    queryFluxRef.get().dispose();
                     executionEndTime.set(Instant.now());
                 })
-                .blockLast();
+                .doOnComplete(() -> {
+                    queryFluxRef.get().dispose();
+                    executionEndTime.set(Instant.now());
+                    logger.debug("Flux terminated, disposed of the subscription.");
+                    logger.info("Execution ended at: {}", executionEndTime.get());
+                }).subscribeOn(Schedulers.boundedElastic()).blockLast();
 
-        List<CosmosDiagnosticsContext> diagnosticsContexts = new ArrayList<>();
+        List<CosmosDiagnostics> diagnosticsContexts = new ArrayList<>();
 
         for (TickRequestContext tickRequestContext : tickRequestContexts.values()) {
-            diagnosticsContexts.addAll(tickRequestContext.getDiagnosticsContexts());
+            diagnosticsContexts.addAll(tickRequestContext.getCosmosDiagnosticsList());
         }
 
-        List<Tick> ticks = ticksOrdered == null ? new ArrayList<>() : new ArrayList<>(ticksOrdered);
+        List<Tick> ticks = ticksPq == null ? new ArrayList<>() : new ArrayList<>(ticksPq);
 
         return new TickResponse(
                 ticks,
@@ -250,12 +293,12 @@ public class TicksServiceImpl implements TicksService {
 
         if (pinStart) {
             String query = "SELECT * FROM C WHERE C.pk IN " + sb + " AND C.docType IN " + docTypePlaceholders +
-                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp DESC, C.recordkey DESC OFFSET 0 LIMIT 10000";
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.messageTimestamp DESC, C.recordkey DESC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
             String query = "SELECT * FROM C WHERE C.pk IN " + sb + " AND C.docType IN " + docTypePlaceholders +
-                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp <= @endTime ORDER BY C.messageTimestamp ASC, C.recordkey ASC OFFSET 0 LIMIT 10000";
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.messageTimestamp ASC, C.recordkey ASC";
 
             return new SqlQuerySpec(query, parameters);
         }
@@ -289,8 +332,8 @@ public class TicksServiceImpl implements TicksService {
         }
 
         return Flux.defer(() -> asyncContainer
-                        .queryItems(querySpec, this.queryRequestOptions, Tick.class)
-                        .byPage(continuationToken, 10000))
+                        .queryItems(querySpec, Tick.class)
+                        .byPage(continuationToken, pageSize.get()))
                 .onErrorResume(throwable -> {
 
                     if (throwable instanceof CosmosException) {
@@ -309,7 +352,7 @@ public class TicksServiceImpl implements TicksService {
                     tickRequestContext.setContinuationToken(page.getContinuationToken());
 
                     if (page.getCosmosDiagnostics() != null) {
-                        tickRequestContext.addDiagnosticsContext(page.getCosmosDiagnostics().getDiagnosticsContext());
+                        tickRequestContext.addCosmosDiagnostics(page.getCosmosDiagnostics());
                     }
 
                     if (page.getContinuationToken() == null) {
@@ -317,7 +360,7 @@ public class TicksServiceImpl implements TicksService {
                     }
 
                     return Flux.fromIterable(page.getResults());
-                });
+                }, concurrency.get(), prefetch.get());
     }
 
     private Flux<ConcurrentLinkedQueue<Tick>> bufferedAndOrderedFetcher(
@@ -338,7 +381,7 @@ public class TicksServiceImpl implements TicksService {
         @SuppressWarnings("unchecked")
         Flux<Tick>[] tickQueryFluxArray = tickQueryFluxes.toArray(new Flux[0]);
 
-        Flux<ConcurrentLinkedQueue<Tick>> sourceFlux = Flux.defer(() -> Flux.mergeComparingDelayError(10000, comparator, tickQueryFluxArray))
+        Flux<ConcurrentLinkedQueue<Tick>> sourceFlux = Flux.defer(() -> Flux.mergeComparingDelayError(prefetch.get(), comparator, tickQueryFluxArray))
                 .flatMap(o -> {
 
                     if (o != null && orderedTicks.size() < totalTicks) {
@@ -346,7 +389,7 @@ public class TicksServiceImpl implements TicksService {
 
                     }
                     return Mono.just(orderedTicks);
-                });
+                }, concurrency.get(), prefetch.get());
 
         return errorHandlingStrategy.apply(sourceFlux);
     }

@@ -9,21 +9,20 @@ import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class TickRequestContext {
-
+public class TickRequestContextPerPartitionKey {
     private final String id;
     private final CosmosAsyncContainer asyncContainer;
-    private final List<String> tickIdentifiers;
+    private final String tickIdentifier;
     private final String requestDateAsString;
     private final String dateFormat;
     private final AtomicReference<String> continuationToken = new AtomicReference<>();
     private final AtomicReference<SqlQuerySpec> sqlQuerySpec = new AtomicReference<>();
     private final CopyOnWriteArrayList<CosmosDiagnostics> cosmosDiagnosticsList = new CopyOnWriteArrayList<>();
 
-    public TickRequestContext(CosmosAsyncContainer asyncContainer, List<String> tickIdentifiers, String requestDateAsString, String dateFormat) {
+    public TickRequestContextPerPartitionKey(CosmosAsyncContainer asyncContainer, String tickIdentifier, String requestDateAsString, String dateFormat) {
         this.id = UUID.randomUUID().toString();
         this.asyncContainer = asyncContainer;
-        this.tickIdentifiers = tickIdentifiers;
+        this.tickIdentifier = tickIdentifier;
         this.requestDateAsString = requestDateAsString;
         this.dateFormat = dateFormat;
     }
@@ -32,8 +31,8 @@ public class TickRequestContext {
         return this.asyncContainer;
     }
 
-    public List<String> getTickIdentifiers() {
-        return this.tickIdentifiers;
+    public String getTickIdentifier() {
+        return this.tickIdentifier;
     }
 
     public String getContinuationToken() {
