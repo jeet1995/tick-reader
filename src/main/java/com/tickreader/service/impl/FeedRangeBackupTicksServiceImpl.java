@@ -10,11 +10,15 @@ import com.azure.cosmos.models.FeedResponse;
 import com.azure.cosmos.models.PartitionKey;
 import com.azure.cosmos.models.SqlParameter;
 import com.azure.cosmos.models.SqlQuerySpec;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tickreader.config.CosmosDbAccount;
 import com.tickreader.config.CosmosDbAccountConfiguration;
 import com.tickreader.config.RicBasedCosmosClientFactory;
 import com.tickreader.dto.TickResponse;
+import com.tickreader.entity.BaseTick;
 import com.tickreader.entity.Tick;
+import com.tickreader.entity.TickWithNoNulls;
 import com.tickreader.service.TicksService;
 import com.tickreader.service.utils.TickServiceUtils;
 import org.apache.spark.unsafe.hash.Murmur3_x86_32;
@@ -47,6 +51,8 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
     private final ExecutorService priorityQueueExecutorService;
     private final int pageSize = 800;
     private final int concurrency = Configs.getCPUCnt() * 10;
+    private final ObjectMapper nonNullObjectMapper = new ObjectMapper();
+    private final ObjectMapper nullObjectMapper = new ObjectMapper();
 
     public FeedRangeBackupTicksServiceImpl(RicBasedCosmosClientFactory clientFactory,
                                          CosmosDbAccountConfiguration cosmosDbAccountConfiguration) {
@@ -54,6 +60,8 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
         this.cosmosDbAccountConfiguration = cosmosDbAccountConfiguration;
         this.queryExecutorService = Executors.newFixedThreadPool(concurrency);
         this.priorityQueueExecutorService = Executors.newSingleThreadExecutor();
+
+        nonNullObjectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
     }
 
     @Override
@@ -63,10 +71,11 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
             int totalTicks,
             boolean pinStart,
             LocalDateTime startTime,
-            LocalDateTime endTime) {
+            LocalDateTime endTime,
+            boolean includeNullValues) {
         
         try {
-            return getTicksAsync(rics, docTypes, totalTicks, pinStart, startTime, endTime).get();
+            return getTicksAsync(rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues).get();
         } catch (InterruptedException | ExecutionException e) {
             logger.error("Error executing getTicks: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to get ticks", e);
@@ -79,7 +88,8 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
             int totalTicks,
             boolean pinStart,
             LocalDateTime startTime,
-            LocalDateTime endTime) {
+            LocalDateTime endTime,
+            boolean includeNullValues) {
 
         return CompletableFuture.supplyAsync(() -> {
             LocalDateTime newStartTime = startTime.isAfter(endTime) ? endTime : startTime;
@@ -95,7 +105,8 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
                     newEndTime,
                     pinStart,
                     totalTicks,
-                    correlationId);
+                    correlationId,
+                    includeNullValues);
         }, queryExecutorService);
     }
 
@@ -161,7 +172,8 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
             LocalDateTime endTime,
             boolean pinStart,
             int totalTicks,
-            String correlationId) {
+            String correlationId,
+            boolean includeNullValues) {
 
         Instant executionStartTime = Instant.now();
         logger.info("Execution of query with correlationId : {} started at : {}", correlationId, executionStartTime);
@@ -199,8 +211,20 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
             cosmosDiagnosticsList.addAll(tickRequestContext.getCosmosDiagnosticsList());
         }
 
+        List<TickWithNoNulls> newTicks = resultTicks.stream()
+                .map(tick -> nonNullObjectMapper.convertValue(tick, TickWithNoNulls.class))
+                .collect(Collectors.toList());
+
+        List<BaseTick> finalTicks = new ArrayList<>();
+
+        if (includeNullValues) {
+            finalTicks.addAll(resultTicks);
+        } else {
+            finalTicks.addAll(newTicks);
+        }
+
         return new TickResponse(
-                resultTicks,
+                finalTicks,
                 cosmosDiagnosticsList,
                 Duration.between(executionStartTime, executionEndTime));
     }
