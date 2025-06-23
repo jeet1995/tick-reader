@@ -24,11 +24,12 @@ An example configuration for two Cosmos DB accounts (count can vary) with differ
 - `DATABASE_NAME_HASH_1`, `DATABASE_NAME_HASH_2`: The names of the databases in the respective Cosmos DB accounts.
 - `COSMOSDB_ACCOUNT_URI_HASH_1`, `COSMOSDB_ACCOUNT_URI_HASH_2`: The URIs of the respective Cosmos DB accounts.
 - `COSMOSDB_PREFERRED_REGIONS_HASH_1`, `COSMOSDB_PREFERRED_REGIONS_HASH_2`: Comma-separated preferred regions for each Cosmos DB account (E.g: "East US 2, West US"). Depending on this setting, `CosmosClient` will reach out to the container in that region order.
+- **NOTE:** The `hashId` and the outer no are to be kept the same.
 
 ```yaml
 ticks:
   cosmosDbAccounts:
-    1:
+    1: 
       databaseName: ${DATABASE_NAME_HASH_1}
       accountUri: ${COSMOSDB_ACCOUNT_URI_HASH_1}
       containerNamePrefix: "container_"
@@ -578,7 +579,7 @@ mvn clean package
 ## Running the application
 
 ```
-java -jar -DCOSMOS.SWITCH_OFF_IO_THREAD_FOR_RESPONSE="true" target/tick-reader-app.jar
+java "-DCOSMOS.SWITCH_OFF_IO_THREAD_FOR_RESPONSE=true" -jar target/tick-reader-app.jar
 ```
 
 # Executing requests
