@@ -36,14 +36,8 @@ public class TickEntry implements Comparable<TickEntry> {
     @Override
     public int compareTo(@NotNull TickEntry other) {
         if (this.pinStart) {
-            if (other.tick.getMessageTimestamp().equals(this.tick.getMessageTimestamp())) {
-                return Long.compare(other.tick.getRecordkey(), this.tick.getRecordkey());
-            }
             return Long.compare(other.tick.getMessageTimestamp(), this.tick.getMessageTimestamp());
         } else {
-            if (this.tick.getMessageTimestamp().equals(other.tick.getMessageTimestamp())) {
-                return Long.compare(this.tick.getRecordkey(), other.tick.getRecordkey());
-            }
             return Long.compare(this.tick.getMessageTimestamp(), other.tick.getMessageTimestamp());
         }
     }
