@@ -586,7 +586,7 @@ java -jar -DCOSMOS.SWITCH_OFF_IO_THREAD_FOR_RESPONSE="true" target/tick-reader-a
 A sample request to query tick data for specific RICs and a date range can be made using the following HTTP GET request:
 
 ```http request
-GET http://localhost:8080/ticks/sort=messageTimestamp&recordKey?rics=AAPL,GOOGL,MSFT&docTypes=TAS&totalTicks=10000&pinStart=true&startTime=2024-10-07T23:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z
+curl "http://localhost:8080/ticks/sort=messageTimestamp?rics=AAPL,MSFT,EUR=,GOOGL&docTypes=TAS&totalTicks=10000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z"
 ```
 
 ## Response
