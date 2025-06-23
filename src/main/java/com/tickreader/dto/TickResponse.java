@@ -1,6 +1,7 @@
 package com.tickreader.dto;
 
 import com.azure.cosmos.CosmosDiagnostics;
+import com.tickreader.entity.BaseTick;
 import com.tickreader.entity.Tick;
 
 import java.time.Duration;
@@ -8,17 +9,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class TickResponse {
-    private final List<Tick> ticks;
+    private final List<BaseTick> ticks;
     private final List<CosmosDiagnostics> diagnosticsList;
     private final Duration executionTime;
 
-    public TickResponse(List<Tick> ticks, List<CosmosDiagnostics> diagnosticsList, Duration executionTime) {
+    public TickResponse(List<BaseTick> ticks, List<CosmosDiagnostics> diagnosticsList, Duration executionTime) {
         this.ticks = ticks != null ? ticks : new ArrayList<>();
         this.diagnosticsList = diagnosticsList;
         this.executionTime = executionTime;
     }
 
-    public List<Tick> getTicks() {
+    public List<BaseTick> getTicks() {
         return this.ticks;
     }
 

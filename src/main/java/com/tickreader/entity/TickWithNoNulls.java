@@ -1,6 +1,9 @@
 package com.tickreader.entity;
 
-public class Tick extends BaseTick {
+import com.fasterxml.jackson.annotation.JsonInclude;
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class TickWithNoNulls extends BaseTick {
 
     private String id;
     private String pk;
