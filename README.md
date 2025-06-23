@@ -19,6 +19,12 @@ Configure accounts and database names for Cosmos DB in `application.yml`:
 
 An example configuration for two Cosmos DB accounts (count can vary) with different database names and URIs:
 
+### Portions of `application.yml`
+
+- `DATABASE_NAME_HASH_1`, `DATABASE_NAME_HASH_2`: The names of the databases in the respective Cosmos DB accounts.
+- `COSMOSDB_ACCOUNT_URI_HASH_1`, `COSMOSDB_ACCOUNT_URI_HASH_2`: The URIs of the respective Cosmos DB accounts.
+- `COSMOSDB_PREFERRED_REGIONS_HASH_1`, `COSMOSDB_PREFERRED_REGIONS_HASH_2`: Comma-separated preferred regions for each Cosmos DB account (E.g: "East US 2, West US"). Depending on this setting, `CosmosClient` will reach out to the container in that region order.
+
 ```yaml
 ticks:
   cosmosDbAccounts:
