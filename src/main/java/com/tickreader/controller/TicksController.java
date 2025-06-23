@@ -25,7 +25,7 @@ public class TicksController {
         this.ticksService = ticksService;
     }
 
-    @GetMapping("/sort=messageTimestamp&recordKey")
+    @GetMapping("/sort=messageTimestamp")
     public TickResponse getTicks(
             @RequestParam List<String> rics,
             @RequestParam List<String> docTypes,
