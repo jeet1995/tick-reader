@@ -57,41 +57,61 @@ ticks:
 
 ```json
 {
-    "indexingMode": "consistent",
-    "automatic": true,
-    "includedPaths": [
-        {
-            "path": "/*"
-        }
+  "indexingMode": "consistent",
+  "automatic": true,
+  "includedPaths": [
+    {
+      "path": "/*"
+    }
+  ],
+  "excludedPaths": [
+    {
+      "path": "/\"_etag\"/?"
+    }
+  ],
+  "compositeIndexes": [
+    [
+      {
+        "path": "/messageTimestamp",
+        "order": "descending"
+      },
+      {
+        "path": "/recordkey",
+        "order": "descending"
+      }
     ],
-    "excludedPaths": [
-        {
-            "path": "/\"_etag\"/?"
-        }
+    [
+      {
+        "path": "/messageTimestamp",
+        "order": "ascending"
+      },
+      {
+        "path": "/recordkey",
+        "order": "ascending"
+      }
     ],
-    "fullTextIndexes": [],
-    "compositeIndexes": [
-        [
-            {
-                "path": "/messageTimestamp",
-                "order": "descending"
-            },
-            {
-                "path": "/recordkey",
-                "order": "descending"
-            }
-        ],
-        [
-            {
-                "path": "/messageTimestamp",
-                "order": "ascending"
-            },
-            {
-                "path": "/recordkey",
-                "order": "ascending"
-            }
-        ]
+    [
+      {
+        "path": "/pk",
+        "order": "ascending"
+      },
+      {
+        "path": "/messageTimestamp",
+        "order": "ascending"
+      }
+    ],
+    [
+      {
+        "path": "/pk",
+        "order": "descending"
+      },
+      {
+        "path": "/messageTimestamp",
+        "order": "descending"
+      }
     ]
+  ],
+  "fullTextIndexes": []
 }
 ```
 
