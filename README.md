@@ -582,10 +582,10 @@ A sample response will look like below:
       "ricName": "AAPL",
       "messageTimestamp": 1728375596311321505,
       "executionTime": 8504,
-      "recordKey": 574062
+      "recordkey": 574062
     }
   ],
-  "diagnosticsContexts": [ "..." ],
+  "diagnosticsList": [ "..." ],
   "executionTime": "PT0.8935116S"
 }
 ```
