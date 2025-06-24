@@ -1,5 +1,7 @@
 package com.tickreader.entity;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public class Tick extends BaseTick {
 
     private String id;
@@ -8,7 +10,10 @@ public class Tick extends BaseTick {
     private Long messageTimestamp;
     private Long executionTime;
     private Integer msgSequence;
+
+    @JsonProperty("RecordKey")
     private Long recordkey;
+
     private Long collectDatetime;
     private Integer rtlWrap;
     private Long rtl;
