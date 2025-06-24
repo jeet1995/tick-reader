@@ -1,6 +1,7 @@
 package com.tickreader.entity;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class TickWithNoNulls extends BaseTick {
@@ -11,7 +12,10 @@ public class TickWithNoNulls extends BaseTick {
     private Long messageTimestamp;
     private Long executionTime;
     private Integer msgSequence;
+
+    @JsonProperty("RecordKey")
     private Long recordkey;
+
     private Long collectDatetime;
     private Integer rtlWrap;
     private Long rtl;
