@@ -41,9 +41,9 @@ import java.util.stream.Collectors;
 
 @Component
 @ConditionalOnProperty(name = "ticks.implementation", havingValue = "completeablefuture")
-public class FeedRangeBackupTicksServiceImpl implements TicksService {
+public class TickServiceImpl implements TicksService {
 
-    private final static Logger logger = LoggerFactory.getLogger(FeedRangeBackupTicksServiceImpl.class);
+    private final static Logger logger = LoggerFactory.getLogger(TickServiceImpl.class);
 
     private final RicBasedCosmosClientFactory clientFactory;
     private final CosmosDbAccountConfiguration cosmosDbAccountConfiguration;
@@ -52,10 +52,9 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
     private final int pageSize = 800;
     private final int concurrency = Configs.getCPUCnt() * 10;
     private final ObjectMapper nonNullObjectMapper = new ObjectMapper();
-    private final ObjectMapper nullObjectMapper = new ObjectMapper();
 
-    public FeedRangeBackupTicksServiceImpl(RicBasedCosmosClientFactory clientFactory,
-                                         CosmosDbAccountConfiguration cosmosDbAccountConfiguration) {
+    public TickServiceImpl(RicBasedCosmosClientFactory clientFactory,
+                           CosmosDbAccountConfiguration cosmosDbAccountConfiguration) {
         this.clientFactory = clientFactory;
         this.cosmosDbAccountConfiguration = cosmosDbAccountConfiguration;
         this.queryExecutorService = Executors.newFixedThreadPool(concurrency);
@@ -72,10 +71,11 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
             boolean pinStart,
             LocalDateTime startTime,
             LocalDateTime endTime,
-            boolean includeNullValues) {
+            boolean includeNullValues,
+            int pageSize) {
         
         try {
-            return getTicksAsync(rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues).get();
+            return getTicksAsync(rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues, pageSize).get();
         } catch (InterruptedException | ExecutionException e) {
             logger.error("Error executing getTicks: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to get ticks", e);
@@ -89,7 +89,8 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
             boolean pinStart,
             LocalDateTime startTime,
             LocalDateTime endTime,
-            boolean includeNullValues) {
+            boolean includeNullValues,
+            int pageSize) {
 
         return CompletableFuture.supplyAsync(() -> {
             LocalDateTime newStartTime = startTime.isAfter(endTime) ? endTime : startTime;
@@ -106,7 +107,8 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
                     pinStart,
                     totalTicks,
                     correlationId,
-                    includeNullValues);
+                    includeNullValues,
+                    pageSize);
         }, queryExecutorService);
     }
 
@@ -173,12 +175,13 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
             boolean pinStart,
             int totalTicks,
             String correlationId,
-            boolean includeNullValues) {
+            boolean includeNullValues,
+            int pageSize) {
 
         Instant executionStartTime = Instant.now();
         logger.info("Execution of query with correlationId : {} started at : {}", correlationId, executionStartTime);
 
-        List<CosmosDiagnostics> cosmosDiagnosticsList = Collections.synchronizedList(new ArrayList<>());
+        List<String> cosmosDiagnosticsList = Collections.synchronizedList(new ArrayList<>());
 
         List<Tick> resultTicks = new ArrayList<>();
         ConcurrentHashMap<String, FeedResponse<Tick>> feedResponseCache = new ConcurrentHashMap<>();
@@ -188,7 +191,7 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
                 // Create tasks for each FeedRange context
                 List<CompletableFuture<Void>> tasks = tickRequestContexts.stream()
                         .map(context -> CompletableFuture.runAsync(() ->
-                                        fetchNextPage(context, docTypes, startTime, endTime, pinStart, feedResponseCache),
+                                        fetchNextPage(context, docTypes, startTime, endTime, pinStart, feedResponseCache, pageSize),
                                 queryExecutorService))
                         .collect(Collectors.toList());
 
@@ -208,7 +211,9 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
         logger.info("Execution of query with correlationId : {} finished in duration : {}", correlationId, Duration.between(executionStartTime, executionEndTime));
 
         for (TickRequestContextPerPartitionKey tickRequestContext : tickRequestContexts) {
-            cosmosDiagnosticsList.addAll(tickRequestContext.getCosmosDiagnosticsList());
+            for (CosmosDiagnostics cosmosDiagnostics : tickRequestContext.getCosmosDiagnosticsList()) {
+                cosmosDiagnosticsList.add(cosmosDiagnostics.toString());
+            }
         }
 
         List<TickWithNoNulls> newTicks = resultTicks.stream()
@@ -235,7 +240,8 @@ public class FeedRangeBackupTicksServiceImpl implements TicksService {
             LocalDateTime startTime,
             LocalDateTime endTime,
             boolean pinStart,
-            ConcurrentHashMap<String, FeedResponse<Tick>> feedResponseCache) {
+            ConcurrentHashMap<String, FeedResponse<Tick>> feedResponseCache,
+            int pageSize) {
 
         CosmosAsyncContainer asyncContainer = tickRequestContext.getAsyncContainer();
         CosmosQueryRequestOptions queryRequestOptions = new CosmosQueryRequestOptions();
