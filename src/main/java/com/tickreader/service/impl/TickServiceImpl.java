@@ -178,7 +178,7 @@ public class TickServiceImpl implements TicksService {
         Instant executionStartTime = Instant.now();
         logger.info("Execution of query with correlationId : {} started at : {}", correlationId, executionStartTime);
 
-        List<CosmosDiagnostics> cosmosDiagnosticsList = Collections.synchronizedList(new ArrayList<>());
+        List<String> cosmosDiagnosticsContextList = Collections.synchronizedList(new ArrayList<>());
 
         List<Tick> resultTicks = new ArrayList<>();
         ConcurrentHashMap<String, FeedResponse<Tick>> feedResponseCache = new ConcurrentHashMap<>();
@@ -208,7 +208,7 @@ public class TickServiceImpl implements TicksService {
         logger.info("Execution of query with correlationId : {} finished in duration : {}", correlationId, Duration.between(executionStartTime, executionEndTime));
 
         for (TickRequestContextPerPartitionKey tickRequestContext : tickRequestContexts) {
-            cosmosDiagnosticsList.addAll(tickRequestContext.getCosmosDiagnosticsList());
+            cosmosDiagnosticsContextList.addAll(tickRequestContext.getCosmosDiagnosticsList().stream().map(cosmosDiagnostics -> cosmosDiagnostics.getDiagnosticsContext().toJson()).collect(Collectors.toList()));
         }
 
         List<TickWithNoNulls> newTicks = resultTicks.stream()
@@ -225,7 +225,7 @@ public class TickServiceImpl implements TicksService {
 
         return new TickResponse(
                 finalTicks,
-                cosmosDiagnosticsList,
+                cosmosDiagnosticsContextList,
                 Duration.between(executionStartTime, executionEndTime));
     }
 
