@@ -210,11 +210,11 @@ public class TickServiceImpl implements TicksService {
         Instant executionEndTime = Instant.now();
         logger.info("Execution of query with correlationId : {} finished in duration : {}", correlationId, Duration.between(executionStartTime, executionEndTime));
 
-        for (TickRequestContextPerPartitionKey tickRequestContext : tickRequestContexts) {
-            for (CosmosDiagnostics cosmosDiagnostics : tickRequestContext.getCosmosDiagnosticsList()) {
-                cosmosDiagnosticsList.add(cosmosDiagnostics.toString());
-            }
-        }
+//        for (TickRequestContextPerPartitionKey tickRequestContext : tickRequestContexts) {
+//            for (CosmosDiagnostics cosmosDiagnostics : tickRequestContext.getCosmosDiagnosticsList()) {
+//                cosmosDiagnosticsList.add(cosmosDiagnostics.getDiagnosticsContext().toJson());
+//            }
+//        }
 
         List<TickWithNoNulls> newTicks = resultTicks.stream()
                 .map(tick -> nonNullObjectMapper.convertValue(tick, TickWithNoNulls.class))
