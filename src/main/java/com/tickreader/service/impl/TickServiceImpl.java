@@ -48,8 +48,6 @@ public class TickServiceImpl implements TicksService {
     private final RicBasedCosmosClientFactory clientFactory;
     private final CosmosDbAccountConfiguration cosmosDbAccountConfiguration;
     private final ExecutorService queryExecutorService;
-    private final ExecutorService priorityQueueExecutorService;
-    private final int pageSize = 800;
     private final int concurrency = Configs.getCPUCnt() * 10;
     private final ObjectMapper nonNullObjectMapper = new ObjectMapper();
 
@@ -58,7 +56,6 @@ public class TickServiceImpl implements TicksService {
         this.clientFactory = clientFactory;
         this.cosmosDbAccountConfiguration = cosmosDbAccountConfiguration;
         this.queryExecutorService = Executors.newFixedThreadPool(concurrency);
-        this.priorityQueueExecutorService = Executors.newSingleThreadExecutor();
 
         nonNullObjectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
     }
@@ -181,7 +178,7 @@ public class TickServiceImpl implements TicksService {
         Instant executionStartTime = Instant.now();
         logger.info("Execution of query with correlationId : {} started at : {}", correlationId, executionStartTime);
 
-        List<String> cosmosDiagnosticsList = Collections.synchronizedList(new ArrayList<>());
+        List<CosmosDiagnostics> cosmosDiagnosticsList = Collections.synchronizedList(new ArrayList<>());
 
         List<Tick> resultTicks = new ArrayList<>();
         ConcurrentHashMap<String, FeedResponse<Tick>> feedResponseCache = new ConcurrentHashMap<>();
@@ -210,11 +207,9 @@ public class TickServiceImpl implements TicksService {
         Instant executionEndTime = Instant.now();
         logger.info("Execution of query with correlationId : {} finished in duration : {}", correlationId, Duration.between(executionStartTime, executionEndTime));
 
-//        for (TickRequestContextPerPartitionKey tickRequestContext : tickRequestContexts) {
-//            for (CosmosDiagnostics cosmosDiagnostics : tickRequestContext.getCosmosDiagnosticsList()) {
-//                cosmosDiagnosticsList.add(cosmosDiagnostics.getDiagnosticsContext().toJson());
-//            }
-//        }
+        for (TickRequestContextPerPartitionKey tickRequestContext : tickRequestContexts) {
+            cosmosDiagnosticsList.addAll(tickRequestContext.getCosmosDiagnosticsList());
+        }
 
         List<TickWithNoNulls> newTicks = resultTicks.stream()
                 .map(tick -> nonNullObjectMapper.convertValue(tick, TickWithNoNulls.class))
@@ -383,32 +378,5 @@ public class TickServiceImpl implements TicksService {
         }
 
         return topNTicks;
-    }
-
-    // Cleanup method for the executor services
-    public void shutdown() {
-        if (queryExecutorService != null && !queryExecutorService.isShutdown()) {
-            queryExecutorService.shutdown();
-            try {
-                if (!queryExecutorService.awaitTermination(60, TimeUnit.SECONDS)) {
-                    queryExecutorService.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                queryExecutorService.shutdownNow();
-                Thread.currentThread().interrupt();
-            }
-        }
-        
-        if (priorityQueueExecutorService != null && !priorityQueueExecutorService.isShutdown()) {
-            priorityQueueExecutorService.shutdown();
-            try {
-                if (!priorityQueueExecutorService.awaitTermination(60, TimeUnit.SECONDS)) {
-                    priorityQueueExecutorService.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                priorityQueueExecutorService.shutdownNow();
-                Thread.currentThread().interrupt();
-            }
-        }
     }
 } 
