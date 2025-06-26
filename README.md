@@ -101,17 +101,6 @@ ticks:
         "order": "ascending"
       }
     ],
-    [
-      {
-        "path": "/pk",
-        "order": "descending"
-      },
-      {
-        "path": "/messageTimestamp",
-        "order": "descending"
-      }
-    ]
-  ],
   "fullTextIndexes": []
 }
 ```
@@ -132,24 +121,58 @@ public class Tick {
     private Long messageTimestamp;
     private Long executionTime;
     private Integer msgSequence;
-    private Long recordKey;
+ 
+    @JsonProperty("RecordKey")
+    private Long recordkey;
+ 
+    @JsonProperty("COLLECT_DATETIME")
     private Long collectDatetime;
+ 
+    @JsonProperty("RTL_Wrap")
     private Integer rtlWrap;
+ 
+    @JsonProperty("RTL")
     private Long rtl;
+ 
+    @JsonProperty("Sub_RTL")
     private String subRtl;
+ 
+    @JsonProperty("RuleSetVersion")
     private String ruleSetVersion;
+ 
+    @JsonProperty("RuleID")
     private String ruleId;
+ 
+    @JsonProperty("RuleVersionID")
     private String ruleVersionId;
+ 
+    @JsonProperty("RuleClauseNo")
     private String ruleClauseNo;
+ 
+    @JsonProperty("SOURCE_DATETIME")
     private Long sourceDatetime;
+ 
+    @JsonProperty("BID")
     private Double bid;
+ 
+    @JsonProperty("BIDSIZE")
     private Double bidSize;
+ 
+    @JsonProperty("ASK")
     private Double ask;
+ 
+    @JsonProperty("ASKSIZE")
     private Double askSize;
+ 
+    @JsonProperty("MID_PRICE")
     private Double midPrice;
+ 
     private String dsplyName;
     private Double yldTomat;
+ 
+    @JsonProperty("BID_YIELD")
     private Double bidYield;
+ 
     private Double askYield;
     private String srcRef1;
     private String dlgCode1;
@@ -157,17 +180,36 @@ public class Tick {
     private String ctbLoc1;
     private Double cnvParity;
     private Double premium;
+ 
+    @JsonProperty("SMP_MARGIN")
     private Double smpMargin;
+ 
+    @JsonProperty("DSC_MARGIN")
     private Double dscMargin;
+ 
+ 
     private Double impVolt;
     private Double oas;
+ 
+    @JsonProperty("DELTA")    
     private Double delta;
+ 
+    @JsonProperty("SWAP_SPRD")    
     private Double swapSprd;
+ 
     private Double askSpread;
+ 
+    @JsonProperty("AST_SWPSPD")
     private Double astSwpspd;
+ 
     private Double bidSpread;
+ 
+    @JsonProperty("BMK_SPD")
     private Double bmkSpd;
+ 
+    @JsonProperty("BPV")
     private Double bpv;
+ 
     private Double ismaBYld;
     private Double ismaAYld;
     private Double midSpread;
@@ -217,17 +259,33 @@ public class Tick {
     private Long sourceDatetimeExt;
     private Double cnvPrem;
     private Double cnvRatio;
+ 
+    @JsonProperty("CURR_BID")
     private Double currBid;
+ 
+    @JsonProperty("CURR_ASK")
     private Double currAsk;
+ 
+    @JsonProperty("TRTN_PRICE")
     private Double trtnPrice;
+ 
+    @JsonProperty("EXCH_DATE")
     private String exchDate;
+ 
+    @JsonProperty("EXCH_TIME")
     private String exchTime;
+   
     private Double quoteVal;
     private String qteId;
     private Double quoteSize;
     private String isinCdD;
+ 
+    @JsonProperty("qualifiers")
     private String qualifiers;
+ 
+    @JsonProperty("user_qualifiers")
     private String userQualifiers;
+    private String docType;
 
     public String getId() {
         return id;
