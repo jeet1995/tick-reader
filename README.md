@@ -586,8 +586,22 @@ java "-DCOSMOS.SWITCH_OFF_IO_THREAD_FOR_RESPONSE=true" -jar target/tick-reader-a
 
 A sample request to query tick data for specific RICs and a date range can be made using the following HTTP GET request:
 
+## Relevant Request Parameters
+
+| Parameter           | Description                                                                                                      | Required | Default Value | Example Value                  |
+|---------------------|------------------------------------------------------------------------------------------------------------------|----------|---------------|--------------------------------|
+| `rics`              | Comma-separated list of RICs to query.                                                                           | Yes      | N/A           | `AAPL,MSFT,GOOGL`              |
+| `docTypes`          | Comma-separated list of document types to query.                                                                 | Yes      | N/A           | `TAS`                          |
+| `totalTicks`        | Total number of ticks to return.                                                                                 | Yes      | N/A           | `5000`                         |
+| `pinStart`          | Whether to pin the start time for the query. If true, the start time will be pinned to the beginning of the day. | Yes      | N/A           | `true`                         |
+| `startTime`         | Start time for the query in ISO 8601 format.                                                                     | Yes      | N/A           | `2024-10-07T00:00:00.0000000Z` |
+| `endTime`           | End time for the query in ISO 8601 format.                                                                       | Yes      | N/A           | `2024-10-07T23:59:59.9999999Z` |
+| `pageSize`          | Number of ticks to return per page.                                                                              | Yes      | `100`         | `1000`                         |
+| `includeNullValues` | Whether to include ticks with null values in the response.                                                       | No       | `false`       | `true`                         |
+
+
 ```http request
-curl "http://localhost:8080/ticks/sort=messageTimestamp?rics=AAPL,MSFT,EUR=,GOOGL&docTypes=TAS&totalTicks=10000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z"
+http://localhost:8080/ticks/sort=messageTimestamp?rics=MSFT,AAPL,GOOGL,EUR=&docTypes=TAS&totalTicks=10000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&pageSize=50&includeNullValues=true
 ```
 
 ## Response
