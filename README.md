@@ -588,16 +588,16 @@ A sample request to query tick data for specific RICs and a date range can be ma
 
 ## Relevant Request Parameters
 
-| Parameter           | Description                                                                                                      | Required | Default Value | Example Value                  |
-|---------------------|------------------------------------------------------------------------------------------------------------------|----------|---------------|--------------------------------|
-| `rics`              | Comma-separated list of RICs to query.                                                                           | Yes      | N/A           | `AAPL,MSFT,GOOGL`              |
-| `docTypes`          | Comma-separated list of document types to query.                                                                 | Yes      | N/A           | `TAS`                          |
-| `totalTicks`        | Total number of ticks to return.                                                                                 | Yes      | N/A           | `5000`                         |
-| `pinStart`          | Whether to pin the start time for the query. If true, the start time will be pinned to the beginning of the day. | Yes      | N/A           | `true`                         |
-| `startTime`         | Start time for the query in ISO 8601 format.                                                                     | Yes      | N/A           | `2024-10-07T00:00:00.0000000Z` |
-| `endTime`           | End time for the query in ISO 8601 format.                                                                       | Yes      | N/A           | `2024-10-07T23:59:59.9999999Z` |
-| `pageSize`          | Number of ticks to return per page.                                                                              | Yes      | `100`         | `1000`                         |
-| `includeNullValues` | Whether to include ticks with null values in the response.                                                       | No       | `false`       | `true`                         |
+| Parameter           | Description                                                                                                        | Required | Default Value | Example Value                  |
+|---------------------|--------------------------------------------------------------------------------------------------------------------|----------|---------------|--------------------------------|
+| `rics`              | Comma-separated list of RICs to query.                                                                             | Yes      | N/A           | `AAPL,MSFT,GOOGL`              |
+| `docTypes`          | Comma-separated list of document types to query.                                                                   | Yes      | N/A           | `TAS`                          |
+| `totalTicks`        | Total number of ticks to return.                                                                                   | Yes      | N/A           | `5000`                         |
+| `pinStart`          | Whether to pin the start time for the query. If true, the start time will be pinned to the beginning of the day.   | Yes      | N/A           | `true`                         |
+| `startTime`         | Start time for the query in ISO 8601 format.                                                                       | Yes      | N/A           | `2024-10-07T00:00:00.0000000Z` |
+| `endTime`           | End time for the query in ISO 8601 format.                                                                         | Yes      | N/A           | `2024-10-07T23:59:59.9999999Z` |
+| `pageSize`          | Number of ticks to return per query which the CosmosClient internally executes (the API itself doesn't do paging). | Yes      | `100`         | `1000`                         |
+| `includeNullValues` | Whether to include ticks with null values in the response.                                                         | No       | `false`       | `true`                         |
 
 
 ```http request
