@@ -631,6 +631,10 @@ A sample response will look like below:
 The code flow of the application is as follows:
 
 ```mermaid
+---
+config:
+      theme: redux
+---
 flowchart TD
         A(["TickServiceImpl"])
         A --> B["buildTickRequestContexts"]
