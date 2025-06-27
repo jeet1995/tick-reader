@@ -627,8 +627,10 @@ A sample response will look like below:
 
 # Code flow
 
+
 The code flow of the application is as follows:
 
+```mermaid
 flowchart TD
         A(["TickServiceImpl"])
         A --> B["buildTickRequestContexts"]
@@ -646,3 +648,4 @@ flowchart TD
         H --> K["findTopNAcrossOnePage"]
         I --> K["findTopNAcrossOnePage"]
         end
+```
