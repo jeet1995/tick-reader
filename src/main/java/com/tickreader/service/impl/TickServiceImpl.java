@@ -2,7 +2,6 @@ package com.tickreader.service.impl;
 
 import com.azure.cosmos.CosmosAsyncClient;
 import com.azure.cosmos.CosmosAsyncContainer;
-import com.azure.cosmos.CosmosDiagnostics;
 import com.azure.cosmos.CosmosException;
 import com.azure.cosmos.implementation.Configs;
 import com.azure.cosmos.models.CosmosQueryRequestOptions;
@@ -79,6 +78,20 @@ public class TickServiceImpl implements TicksService {
         }
     }
 
+    // Dates: 2024-10-01T00:00:00 to 2024-10-05T23:59:59
+    // RIC: AAPL
+    // PkFormat: <RIC>|yyyy-MM-dd|<shardId>
+    // Example: [AAPL|2024-10-01|1, .., AAPL|2024-10-01|8], [AAPL|2024-10-02|1, .., AAPL|2024-10-02|8], ... , [AAPL|2024-10-05|1, .., AAPL|2024-10-05|8]
+    // Data Model
+    //  - RIC <-> CosmosDbAccount <-> Database <-> Container (granularity: day)
+    // Query -> across 5 containers (one for each day)
+    // QueryString -> SELECT * FROM C WHERE C.docType IN " + docTypePlaceholders +
+    //                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk DESC, C.messageTimestamp DESC"
+    // Cosmos Db perspective:
+    // Task <-> TickRequestContext <-> CosmosContainer.queryItems(SELECT * FROM C WHERE C.docType IN " + docTypePlaceholders +
+    //    //                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk DESC, C.messageTimestamp DESC", queryRequestOptions (set the partition key), Tick.class) // AAPL|2024-10-01|1 (container for 2024-10-01)
+    // CosmosContainer.queryItems(SELECT * FROM C WHERE C.docType IN " + docTypePlaceholders +
+    //    //                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk DESC, C.messageTimestamp DESC", queryRequestOptions (set the partition key), Tick.class) // AAPL|2024-10-01|2
     private CompletableFuture<TickResponse> getTicksAsync(
             List<String> rics,
             List<String> docTypes,
@@ -194,7 +207,7 @@ public class TickServiceImpl implements TicksService {
 
                 CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
 
-                resultTicks.addAll(findTopN(feedResponseCache.values().stream().collect(Collectors.toList()), totalTicks - resultTicks.size(), pinStart));
+                resultTicks.addAll(findTopNAcrossOnePage(feedResponseCache.values().stream().collect(Collectors.toList()), totalTicks - resultTicks.size(), pinStart));
 
                 feedResponseCache.clear();
 
@@ -347,9 +360,11 @@ public class TickServiceImpl implements TicksService {
         }
     }
 
-    public List<Tick> findTopN(List<FeedResponse<Tick>> responses, int topN, boolean pinStart) {
+    public List<Tick> findTopNAcrossOnePage(List<FeedResponse<Tick>> responses, int topN, boolean pinStart) {
         PriorityQueue<TickEntry> globalOrderedTicks = new PriorityQueue<>();
 
+        // PK1: [29, 27] (array of message timestamps)
+        // PK2: [30, 28] (array of message timestamps)
         for (int i = 0; i < responses.size(); i++) {
             List<Tick> ticks = responses.get(i).getResults();
 
@@ -358,6 +373,8 @@ public class TickServiceImpl implements TicksService {
                 globalOrderedTicks.offer(new TickEntry(ticks.get(firstIndex), i, firstIndex, pinStart));
             }
         }
+
+        // globalOrderedTicks -> [30, 29]
 
         List<Tick> topNTicks = new ArrayList<>();
 

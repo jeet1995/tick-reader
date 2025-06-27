@@ -591,7 +591,7 @@ A sample request to query tick data for specific RICs and a date range can be ma
 | Parameter           | Description                                                                                                        | Required | Default Value | Example Value                  |
 |---------------------|--------------------------------------------------------------------------------------------------------------------|----------|---------------|--------------------------------|
 | `rics`              | Comma-separated list of RICs to query.                                                                             | Yes      | N/A           | `AAPL,MSFT,GOOGL`              |
-| `docTypes`          | Comma-separated list of document types to query.                                                                   | Yes      | N/A           | `TAS`                          |
+| `docTypes`          | Comma-separated list of document types to query.                                                                   | Yes      | N/A           | `TAS,TAQ`                      |
 | `totalTicks`        | Total number of ticks to return.                                                                                   | Yes      | N/A           | `5000`                         |
 | `pinStart`          | Whether to pin the start time for the query. If true, the start time will be pinned to the beginning of the day.   | Yes      | N/A           | `true`                         |
 | `startTime`         | Start time for the query in ISO 8601 format.                                                                       | Yes      | N/A           | `2024-10-07T00:00:00.0000000Z` |
@@ -624,3 +624,25 @@ A sample response will look like below:
   "executionTime": "PT0.8935116S"
 }
 ```
+
+# Code flow
+
+The code flow of the application is as follows:
+
+flowchart TD
+        A(["TickServiceImpl"])
+        A --> B["buildTickRequestContexts"]
+        B --> C["tickRequestContext 1"]
+        B --> D["tickRequestContext 2"]
+        B --> E["tickRequestContext N"]
+        C --> F["executeQueryWithTopNSorted"]
+        D --> F
+        E --> F
+        subgraph "`**Repeat until all ticks have been collected**`"
+        F --> G["fetchNextPage(tickRequestContext 1)"]
+        F --> H["fetchNextPage(tickRequestContext 2)"]
+        F --> I["fetchNextPage(tickRequestContext N)"]
+        G --> K["findTopNAcrossOnePage"]
+        H --> K["findTopNAcrossOnePage"]
+        I --> K["findTopNAcrossOnePage"]
+        end
