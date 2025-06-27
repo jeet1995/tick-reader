@@ -660,4 +660,4 @@ flowchart TD
 - First, it builds a list of `TickRequestContextPerPartitionKey` objects. `TickRequestContextPerPartitionKey` is a data structure that holds the necessary meta for querying ticks associated with a <RIC|day|shard> against a particular CosmosContainer. It stores the continuation (to fetch the next) and a list of `CosmosDiagnosticsContext` to collect diagnostics information for each query execution.
 - Each `TickRequestContext` is responsible for executing the query against the Cosmos DB container.
 - The `findTopNAcrossOnePage` method is called to find the top N ticks across all pages fetched for each `TickRequestContextPerPartitionKey`.
-- `findTopNAcrossOnePage` is executed until required count of ticks have been collected or each query executed (per `TickRequestContextPerPartitionKey` is drained completely).
+- The series of `fetchNextPage` followed by `findTopNAcrossOnePage` is repeatedly executed until required count of ticks have been collected or each query executed (per `TickRequestContextPerPartitionKey` is drained completely).
