@@ -13,5 +13,6 @@ public interface TicksService {
             boolean pinStart,
             LocalDateTime startTime,
             LocalDateTime endTime,
-            boolean includeNullValues);
+            boolean includeNullValues,
+            int pageSize);
 }

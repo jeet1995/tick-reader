@@ -101,6 +101,17 @@ ticks:
         "order": "ascending"
       }
     ],
+    [
+      {
+        "path": "/pk",
+        "order": "descending"
+      },
+      {
+        "path": "/messageTimestamp",
+        "order": "descending"
+      }
+    ]
+  ],
   "fullTextIndexes": []
 }
 ```
@@ -121,58 +132,24 @@ public class Tick {
     private Long messageTimestamp;
     private Long executionTime;
     private Integer msgSequence;
- 
-    @JsonProperty("RecordKey")
-    private Long recordkey;
- 
-    @JsonProperty("COLLECT_DATETIME")
+    private Long recordKey;
     private Long collectDatetime;
- 
-    @JsonProperty("RTL_Wrap")
     private Integer rtlWrap;
- 
-    @JsonProperty("RTL")
     private Long rtl;
- 
-    @JsonProperty("Sub_RTL")
     private String subRtl;
- 
-    @JsonProperty("RuleSetVersion")
     private String ruleSetVersion;
- 
-    @JsonProperty("RuleID")
     private String ruleId;
- 
-    @JsonProperty("RuleVersionID")
     private String ruleVersionId;
- 
-    @JsonProperty("RuleClauseNo")
     private String ruleClauseNo;
- 
-    @JsonProperty("SOURCE_DATETIME")
     private Long sourceDatetime;
- 
-    @JsonProperty("BID")
     private Double bid;
- 
-    @JsonProperty("BIDSIZE")
     private Double bidSize;
- 
-    @JsonProperty("ASK")
     private Double ask;
- 
-    @JsonProperty("ASKSIZE")
     private Double askSize;
- 
-    @JsonProperty("MID_PRICE")
     private Double midPrice;
- 
     private String dsplyName;
     private Double yldTomat;
- 
-    @JsonProperty("BID_YIELD")
     private Double bidYield;
- 
     private Double askYield;
     private String srcRef1;
     private String dlgCode1;
@@ -180,36 +157,17 @@ public class Tick {
     private String ctbLoc1;
     private Double cnvParity;
     private Double premium;
- 
-    @JsonProperty("SMP_MARGIN")
     private Double smpMargin;
- 
-    @JsonProperty("DSC_MARGIN")
     private Double dscMargin;
- 
- 
     private Double impVolt;
     private Double oas;
- 
-    @JsonProperty("DELTA")    
     private Double delta;
- 
-    @JsonProperty("SWAP_SPRD")    
     private Double swapSprd;
- 
     private Double askSpread;
- 
-    @JsonProperty("AST_SWPSPD")
     private Double astSwpspd;
- 
     private Double bidSpread;
- 
-    @JsonProperty("BMK_SPD")
     private Double bmkSpd;
- 
-    @JsonProperty("BPV")
     private Double bpv;
- 
     private Double ismaBYld;
     private Double ismaAYld;
     private Double midSpread;
@@ -259,33 +217,17 @@ public class Tick {
     private Long sourceDatetimeExt;
     private Double cnvPrem;
     private Double cnvRatio;
- 
-    @JsonProperty("CURR_BID")
     private Double currBid;
- 
-    @JsonProperty("CURR_ASK")
     private Double currAsk;
- 
-    @JsonProperty("TRTN_PRICE")
     private Double trtnPrice;
- 
-    @JsonProperty("EXCH_DATE")
     private String exchDate;
- 
-    @JsonProperty("EXCH_TIME")
     private String exchTime;
-   
     private Double quoteVal;
     private String qteId;
     private Double quoteSize;
     private String isinCdD;
- 
-    @JsonProperty("qualifiers")
     private String qualifiers;
- 
-    @JsonProperty("user_qualifiers")
     private String userQualifiers;
-    private String docType;
 
     public String getId() {
         return id;
@@ -644,8 +586,22 @@ java "-DCOSMOS.SWITCH_OFF_IO_THREAD_FOR_RESPONSE=true" -jar target/tick-reader-a
 
 A sample request to query tick data for specific RICs and a date range can be made using the following HTTP GET request:
 
+## Relevant Request Parameters
+
+| Parameter           | Description                                                                                                        | Required | Default Value | Example Value                  |
+|---------------------|--------------------------------------------------------------------------------------------------------------------|----------|---------------|--------------------------------|
+| `rics`              | Comma-separated list of RICs to query.                                                                             | Yes      | N/A           | `AAPL,MSFT,GOOGL`              |
+| `docTypes`          | Comma-separated list of document types to query.                                                                   | Yes      | N/A           | `TAS,TAQ`                      |
+| `totalTicks`        | Total number of ticks to return.                                                                                   | Yes      | N/A           | `5000`                         |
+| `pinStart`          | Whether to pin the start time for the query. If true, the start time will be pinned to the beginning of the day.   | Yes      | N/A           | `true`                         |
+| `startTime`         | Start time for the query in ISO 8601 format.                                                                       | Yes      | N/A           | `2024-10-07T00:00:00.0000000Z` |
+| `endTime`           | End time for the query in ISO 8601 format.                                                                         | Yes      | N/A           | `2024-10-07T23:59:59.9999999Z` |
+| `pageSize`          | Number of ticks to return per query which the CosmosClient internally executes (the API itself doesn't do paging). | Yes      | `100`         | `1000`                         |
+| `includeNullValues` | Whether to include ticks with null values in the response.                                                         | No       | `false`       | `true`                         |
+
+
 ```http request
-curl "http://localhost:8080/ticks/sort=messageTimestamp?rics=AAPL,MSFT,EUR=,GOOGL&docTypes=TAS&totalTicks=10000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&includeNullValues=false"
+http://localhost:8080/ticks/sort=messageTimestamp?rics=MSFT,AAPL,GOOGL,EUR=&docTypes=TAS&totalTicks=10000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&pageSize=50&includeNullValues=true
 ```
 
 ## Response
@@ -668,3 +624,41 @@ A sample response will look like below:
   "executionTime": "PT0.8935116S"
 }
 ```
+
+# Code flow
+
+
+The code flow of the application is as follows:
+
+```mermaid
+---
+config:
+      theme: redux
+---
+flowchart TD
+        A(["TickServiceImpl"])
+        A --> B["buildTickRequestContexts"]
+        B --> C["tickRequestContext 1"]
+        B --> D["tickRequestContext 2"]
+        B --> E["tickRequestContext N"]
+        C --> F["executeQueryWithTopNSorted"]
+        D --> F
+        E --> F
+        subgraph "`**Repeat until all ticks have been collected**`"
+        F --> G["fetchNextPage(tickRequestContext 1)"]
+        F --> H["fetchNextPage(tickRequestContext 2)"]
+        F --> I["fetchNextPage(tickRequestContext N)"]
+        G --> K["findTopNAcrossOnePage"]
+        H --> K["findTopNAcrossOnePage"]
+        I --> K["findTopNAcrossOnePage"]
+        end
+```
+
+## Description of the flow
+
+- The `TickServiceImpl` encapsulates the implementation details for querying tick data. 
+- First, it builds a list of `TickRequestContextPerPartitionKey` objects. 
+- `TickRequestContextPerPartitionKey` is a data structure that holds the necessary metadata for querying ticks associated with a `<RIC|day|shard>` against a particular `CosmosContainer` instance. It stores the continuation (to fetch the next page) and a list of `CosmosDiagnosticsContext` to collect diagnostics information for each query execution.
+- Each `TickRequestContext` is responsible for executing the query against the Cosmos DB container.
+- The `findTopNAcrossOnePage` method is called to find the top N ticks across all pages fetched for each `TickRequestContextPerPartitionKey`. It uses a priority queue to efficiently maintain the top N ticks across all pages spanning an iteration (1 execution across all `fetchNextPage`).
+- The series of `fetchNextPage` followed by `findTopNAcrossOnePage` is repeatedly executed until required count of ticks have been collected or each query executed (per `TickRequestContextPerPartitionKey`)  has been drained completely.
