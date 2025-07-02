@@ -69,10 +69,11 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime endTime,
             boolean includeNullValues,
             int pageSize,
-            String fields) {
+            String fields,
+            boolean includeDiagnostics) {
         
         try {
-            return getTicksAsync(rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues, pageSize, fields).get();
+            return getTicksAsync(rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues, pageSize, fields, includeDiagnostics).get();
         } catch (InterruptedException | ExecutionException e) {
             logger.error("Error executing getTicks: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to get ticks", e);
@@ -102,7 +103,8 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime endTime,
             boolean includeNullValues,
             int pageSize,
-            String fields) {
+            String fields,
+            boolean includeDiagnostics) {
 
         return CompletableFuture.supplyAsync(() -> {
             LocalDateTime newStartTime = startTime.isAfter(endTime) ? endTime : startTime;
@@ -121,7 +123,8 @@ public class TickServiceImpl implements TicksService {
                     correlationId,
                     includeNullValues,
                     pageSize,
-                    fields);
+                    fields,
+                    includeDiagnostics);
         }, queryExecutorService);
     }
 
@@ -190,7 +193,8 @@ public class TickServiceImpl implements TicksService {
             String correlationId,
             boolean includeNullValues,
             int pageSize,
-            String fields) {
+            String fields,
+            boolean includeDiagnostics) {
 
         Instant executionStartTime = Instant.now();
         logger.info("Execution of query with correlationId : {} started at : {}", correlationId, executionStartTime);
@@ -242,7 +246,7 @@ public class TickServiceImpl implements TicksService {
 
         return new TickResponse(
                 finalTicks,
-                cosmosDiagnosticsContextList,
+                includeDiagnostics ? cosmosDiagnosticsContextList : null,
                 Duration.between(executionStartTime, executionEndTime));
     }
 
