@@ -68,10 +68,11 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime startTime,
             LocalDateTime endTime,
             boolean includeNullValues,
-            int pageSize) {
+            int pageSize,
+            String fields) {
         
         try {
-            return getTicksAsync(rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues, pageSize).get();
+            return getTicksAsync(rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues, pageSize, fields).get();
         } catch (InterruptedException | ExecutionException e) {
             logger.error("Error executing getTicks: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to get ticks", e);
@@ -100,7 +101,8 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime startTime,
             LocalDateTime endTime,
             boolean includeNullValues,
-            int pageSize) {
+            int pageSize,
+            String fields) {
 
         return CompletableFuture.supplyAsync(() -> {
             LocalDateTime newStartTime = startTime.isAfter(endTime) ? endTime : startTime;
@@ -118,7 +120,8 @@ public class TickServiceImpl implements TicksService {
                     totalTicks,
                     correlationId,
                     includeNullValues,
-                    pageSize);
+                    pageSize,
+                    fields);
         }, queryExecutorService);
     }
 
@@ -186,7 +189,8 @@ public class TickServiceImpl implements TicksService {
             int totalTicks,
             String correlationId,
             boolean includeNullValues,
-            int pageSize) {
+            int pageSize,
+            String fields) {
 
         Instant executionStartTime = Instant.now();
         logger.info("Execution of query with correlationId : {} started at : {}", correlationId, executionStartTime);
@@ -201,7 +205,7 @@ public class TickServiceImpl implements TicksService {
                 // Create tasks for each FeedRange context
                 List<CompletableFuture<Void>> tasks = tickRequestContexts.stream()
                         .map(context -> CompletableFuture.runAsync(() ->
-                                        fetchNextPage(context, docTypes, startTime, endTime, pinStart, feedResponseCache, pageSize),
+                                        fetchNextPage(context, docTypes, startTime, endTime, pinStart, feedResponseCache, pageSize, fields),
                                 queryExecutorService))
                         .collect(Collectors.toList());
 
@@ -249,7 +253,8 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime endTime,
             boolean pinStart,
             ConcurrentHashMap<String, FeedResponse<Tick>> feedResponseCache,
-            int pageSize) {
+            int pageSize,
+            String fields) {
 
         CosmosAsyncContainer asyncContainer = tickRequestContext.getAsyncContainer();
         CosmosQueryRequestOptions queryRequestOptions = new CosmosQueryRequestOptions();
@@ -262,7 +267,8 @@ public class TickServiceImpl implements TicksService {
                 endTime,
                 tickRequestContext.getRequestDateAsString(),
                 tickRequestContext.getDateFormat(),
-                pinStart
+                pinStart,
+                fields
         );
 
         tickRequestContext.setSqlQuerySpec(querySpec);
@@ -316,7 +322,8 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime endTime,
             String localDateAsString,
             String format,
-            boolean pinStart) {
+            boolean pinStart,
+            String fields) {
 
         LocalDate localDate = LocalDate.parse(localDateAsString, DateTimeFormatter.ofPattern(format));
 
@@ -347,13 +354,38 @@ public class TickServiceImpl implements TicksService {
 
         docTypePlaceholders.append(")");
 
+        // Construct the SELECT clause based on fields parameter
+        String selectClause = "*";
+        if (fields != null && !fields.trim().isEmpty()) {
+            // Split the comma-delimited fields and prefix each with "C."
+            String[] fieldArray = fields.split(",");
+            StringBuilder fieldBuilder = new StringBuilder();
+            boolean hasValidFields = false;
+            
+            for (int i = 0; i < fieldArray.length; i++) {
+                String field = fieldArray[i].trim();
+                if (!field.isEmpty()) {
+                    if (hasValidFields) {
+                        fieldBuilder.append(", ");
+                    }
+                    fieldBuilder.append("C.").append(field);
+                    hasValidFields = true;
+                }
+            }
+            
+            // Only use custom field selection if we have valid fields
+            if (hasValidFields) {
+                selectClause = fieldBuilder.toString();
+            }
+        }
+
         if (pinStart) {
-            String query = "SELECT * FROM C WHERE C.docType IN " + docTypePlaceholders +
+            String query = "SELECT " + selectClause + " FROM C WHERE C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp DESC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
-            String query = "SELECT * FROM C WHERE C.docType IN " + docTypePlaceholders +
+            String query = "SELECT " + selectClause + " FROM C WHERE C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp ASC";
 
             return new SqlQuerySpec(query, parameters);

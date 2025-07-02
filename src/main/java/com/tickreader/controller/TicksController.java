@@ -1,7 +1,6 @@
 package com.tickreader.controller;
 
 import com.tickreader.dto.TickResponse;
-import com.tickreader.entity.Tick;
 import com.tickreader.service.TicksService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,14 +33,15 @@ public class TicksController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
             @RequestParam(required = false, defaultValue = "false") boolean includeNullValues,
-            @RequestParam(required = false, defaultValue = "100") int pageSize) {
+            @RequestParam(required = false, defaultValue = "100") int pageSize,
+            @RequestParam(required = false) String fields) {
 
         TickResponse tickResponse = ticksService.getTicks(
-                rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues, pageSize);
+                rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues, pageSize, fields);
 
         if (logger.isDebugEnabled()) {
-            logger.debug("Request parameters: rics={}, totalTicks={}, pinStart={}, startTime={}, endTime={}",
-                    rics, totalTicks, pinStart, startTime, endTime);
+            logger.debug("Request parameters: rics={}, totalTicks={}, pinStart={}, startTime={}, endTime={}, fields={}",
+                    rics, totalTicks, pinStart, startTime, endTime, fields);
             logger.debug("Ticks fetched: {}", tickResponse.getTicks().size());
         }
 
