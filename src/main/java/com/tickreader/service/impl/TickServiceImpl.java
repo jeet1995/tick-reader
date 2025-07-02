@@ -364,23 +364,16 @@ public class TickServiceImpl implements TicksService {
             // Split the comma-delimited fields and prefix each with "C."
             String[] fieldArray = fields.split(",");
             StringBuilder fieldBuilder = new StringBuilder();
-            boolean hasValidFields = false;
+            fieldBuilder.append("C.messagesTimestamp");
             
             for (int i = 0; i < fieldArray.length; i++) {
                 String field = fieldArray[i].trim();
                 if (!field.isEmpty()) {
-                    if (hasValidFields) {
-                        fieldBuilder.append(", ");
-                    }
+                    fieldBuilder.append(", ");
                     fieldBuilder.append("C.").append(field);
-                    hasValidFields = true;
                 }
             }
-            
-            // Only use custom field selection if we have valid fields
-            if (hasValidFields) {
-                selectClause = fieldBuilder.toString();
-            }
+            selectClause = fieldBuilder.toString();
         }
 
         if (pinStart) {
