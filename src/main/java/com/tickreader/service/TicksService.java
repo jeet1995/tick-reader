@@ -14,5 +14,7 @@ public interface TicksService {
             LocalDateTime startTime,
             LocalDateTime endTime,
             boolean includeNullValues,
-            int pageSize);
+            int pageSize,
+            String fields,
+            boolean includeDiagnostics);
 }
