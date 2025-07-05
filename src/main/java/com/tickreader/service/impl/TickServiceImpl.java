@@ -6,7 +6,6 @@ import com.azure.cosmos.CosmosException;
 import com.azure.cosmos.implementation.Configs;
 import com.azure.cosmos.models.CosmosQueryRequestOptions;
 import com.azure.cosmos.models.FeedResponse;
-import com.azure.cosmos.models.PartitionKey;
 import com.azure.cosmos.models.SqlParameter;
 import com.azure.cosmos.models.SqlQuerySpec;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -68,10 +67,11 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime startTime,
             LocalDateTime endTime,
             boolean includeNullValues,
-            int pageSize) {
+            int pageSize,
+            boolean includeDiagnostics) {
         
         try {
-            return getTicksAsync(rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues, pageSize).get();
+            return getTicksAsync(rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues, pageSize, includeDiagnostics).get();
         } catch (InterruptedException | ExecutionException e) {
             logger.error("Error executing getTicks: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to get ticks", e);
@@ -100,37 +100,43 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime startTime,
             LocalDateTime endTime,
             boolean includeNullValues,
-            int pageSize) {
+            int pageSize,
+            boolean includeDiagnostics) {
 
         return CompletableFuture.supplyAsync(() -> {
             LocalDateTime newStartTime = startTime.isAfter(endTime) ? endTime : startTime;
             LocalDateTime newEndTime = endTime.isBefore(startTime) ? startTime : endTime;
 
-            List<TickRequestContextPerPartitionKey> tickRequestContexts = buildTickRequestContexts(rics, newStartTime, newEndTime);
+            Map<String, RicQueryExecutionState> ricToRicQueryExecutionState = buildTickRequestContexts(rics, newStartTime, newEndTime, pinStart);
             String correlationId = UUID.randomUUID().toString();
 
             return executeQueryWithTopNSorted(
-                    tickRequestContexts,
+                    rics,
+                    ricToRicQueryExecutionState,
                     docTypes,
                     newStartTime,
                     newEndTime,
-                    pinStart,
                     totalTicks,
                     correlationId,
                     includeNullValues,
-                    pageSize);
+                    pinStart,
+                    pageSize,
+                    includeDiagnostics);
         }, queryExecutorService);
     }
 
-    private List<TickRequestContextPerPartitionKey> buildTickRequestContexts(
+    private Map<String, RicQueryExecutionState> buildTickRequestContexts(
             List<String> rics, 
             LocalDateTime startTime, 
-            LocalDateTime endTime) {
-        
-        List<TickRequestContextPerPartitionKey> tickRequestContexts = new ArrayList<>();
-        int shardCount = this.cosmosDbAccountConfiguration.getShardCountPerRic();
+            LocalDateTime endTime,
+            boolean pinStart) {
+
+        Map<String, RicQueryExecutionState> ricToRicQueryExecutionState = new HashMap<>();
 
         for (String ric : rics) {
+
+            List<TickRequestContextPerPartitionKey> tickRequestContexts = new ArrayList<>();
+
             int seed = 42;
             UTF8String s = UTF8String.fromString(ric);
             int hash = Murmur3_x86_32.hashUnsafeBytes(s.getBaseObject(), s.getBaseOffset(), s.numBytes(), seed);
@@ -139,7 +145,7 @@ public class TickServiceImpl implements TicksService {
             CosmosDbAccount cosmosDbAccount = this.cosmosDbAccountConfiguration.getCosmosDbAccount(hashIdForRic);
             String dateFormat = cosmosDbAccount.getContainerNameFormat();
 
-            List<String> datesInBetween = TickServiceUtils.getLocalDatesBetweenTwoLocalDateTimes(startTime, endTime, dateFormat);
+            List<String> datesInBetween = TickServiceUtils.getLocalDatesBetweenTwoLocalDateTimes(startTime, endTime, dateFormat, pinStart);
 
             for (String date : datesInBetween) {
                 CosmosAsyncClient asyncClient = this.clientFactory.getCosmosAsyncClient(hashIdForRic);
@@ -160,33 +166,37 @@ public class TickServiceImpl implements TicksService {
 
                 String tickIdentifier = TickServiceUtils.constructTickIdentifierPrefix(ric, date);
 
-                for (int i = 1; i <= shardCount; i++) {
-                    String partitionKey = tickIdentifier + "|" + i;
+                TickRequestContextPerPartitionKey tickRequestContext = new TickRequestContextPerPartitionKey(
+                        asyncContainer,
+                        tickIdentifier,
+                        date,
+                        dateFormat);
 
-                    TickRequestContextPerPartitionKey tickRequestContext = new TickRequestContextPerPartitionKey(
-                            asyncContainer,
-                            partitionKey,
-                            date,
-                            dateFormat);
+                tickRequestContexts.add(tickRequestContext);
+            }
 
-                    tickRequestContexts.add(tickRequestContext);
-                }
+            if (!tickRequestContexts.isEmpty()) {
+                ricToRicQueryExecutionState.put(ric, new RicQueryExecutionState(tickRequestContexts));
+            } else {
+                logger.warn("No tick request contexts found for ric: {}", ric);
             }
         }
 
-        return tickRequestContexts;
+        return ricToRicQueryExecutionState;
     }
 
     private TickResponse executeQueryWithTopNSorted(
-            List<TickRequestContextPerPartitionKey> tickRequestContexts,
+            List<String> rics,
+            Map<String, RicQueryExecutionState> ricToRicQueryExecutionState,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
-            boolean pinStart,
             int totalTicks,
             String correlationId,
             boolean includeNullValues,
-            int pageSize) {
+            boolean pinStart,
+            int pageSize,
+            boolean includeDiagnostics) {
 
         Instant executionStartTime = Instant.now();
         logger.info("Execution of query with correlationId : {} started at : {}", correlationId, executionStartTime);
@@ -194,23 +204,17 @@ public class TickServiceImpl implements TicksService {
         List<String> cosmosDiagnosticsContextList = Collections.synchronizedList(new ArrayList<>());
 
         List<Tick> resultTicks = new ArrayList<>();
-        ConcurrentHashMap<String, FeedResponse<Tick>> feedResponseCache = new ConcurrentHashMap<>();
 
-        while (resultTicks.size() < totalTicks && !tickRequestContexts.stream().allMatch(tickRequestContext -> tickRequestContext.getContinuationToken() != null && tickRequestContext.getContinuationToken().equals("drained"))) {
+        while (!ricToRicQueryExecutionState.values().stream().allMatch(RicQueryExecutionState::isCompleted)) {
             try {
                 // Create tasks for each FeedRange context
-                List<CompletableFuture<Void>> tasks = tickRequestContexts.stream()
-                        .map(context -> CompletableFuture.runAsync(() ->
-                                        fetchNextPage(context, docTypes, startTime, endTime, pinStart, feedResponseCache, pageSize),
+                List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
+                        .map(ricQueryExecutionState -> CompletableFuture.runAsync(() ->
+                                        fetchNextPage(ricQueryExecutionState, docTypes, startTime, endTime, pageSize, pinStart, totalTicks),
                                 queryExecutorService))
                         .collect(Collectors.toList());
 
                 CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
-
-                resultTicks.addAll(findTopNAcrossOnePage(feedResponseCache.values().stream().collect(Collectors.toList()), totalTicks - resultTicks.size(), pinStart));
-
-                feedResponseCache.clear();
-
             } catch (InterruptedException | ExecutionException e) {
                 logger.error("Error during query execution: {}", e.getMessage(), e);
                 throw new RuntimeException("Failed to execute queries", e);
@@ -220,50 +224,81 @@ public class TickServiceImpl implements TicksService {
         Instant executionEndTime = Instant.now();
         logger.info("Execution of query with correlationId : {} finished in duration : {}", correlationId, Duration.between(executionStartTime, executionEndTime));
 
-        for (TickRequestContextPerPartitionKey tickRequestContext : tickRequestContexts) {
-            cosmosDiagnosticsContextList.addAll(tickRequestContext.getCosmosDiagnosticsList().stream().map(cosmosDiagnostics -> cosmosDiagnostics.getDiagnosticsContext().toJson()).collect(Collectors.toList()));
-        }
+        for (String ric : rics) {
+            RicQueryExecutionState ricQueryExecutionState = ricToRicQueryExecutionState.get(ric);
+            if (ricQueryExecutionState == null) {
+                logger.warn("No RicQueryExecutionState found for ric: {}", ric);
+                continue;
+            }
 
-        List<TickWithNoNulls> newTicks = resultTicks.stream()
-                .map(tick -> nonNullObjectMapper.convertValue(tick, TickWithNoNulls.class))
-                .collect(Collectors.toList());
+            List<Tick> ticks = ricQueryExecutionState.getTicks();
+            if (ticks.isEmpty()) {
+                logger.warn("No ticks found for ric: {}", ric);
+                continue;
+            }
+
+            // Add cosmos diagnostics context
+
+            for (TickRequestContextPerPartitionKey tickRequestContextPerPartitionKey : ricQueryExecutionState.getTickRequestContexts()) {
+                if (tickRequestContextPerPartitionKey.getCosmosDiagnosticsList() != null) {
+                    cosmosDiagnosticsContextList.addAll(tickRequestContextPerPartitionKey.getCosmosDiagnosticsList().stream().map(cosmosDiagnosticsContext -> cosmosDiagnosticsContext.getDiagnosticsContext().toJson()).collect(Collectors.toList()));
+                }
+            }
+
+            if (pinStart) {
+                Collections.reverse(ticks);
+            }
+
+            resultTicks.addAll(ticks);
+        }
 
         List<BaseTick> finalTicks = new ArrayList<>();
 
         if (includeNullValues) {
             finalTicks.addAll(resultTicks);
         } else {
+            List<TickWithNoNulls> newTicks = resultTicks.stream()
+                    .map(tick -> nonNullObjectMapper.convertValue(tick, TickWithNoNulls.class))
+                    .collect(Collectors.toList());
+
             finalTicks.addAll(newTicks);
         }
 
         return new TickResponse(
                 finalTicks,
-                cosmosDiagnosticsContextList,
+                includeDiagnostics ? cosmosDiagnosticsContextList : Collections.emptyList(),
                 Duration.between(executionStartTime, executionEndTime));
     }
 
     private void fetchNextPage(
-            TickRequestContextPerPartitionKey tickRequestContext,
+            RicQueryExecutionState ricQueryExecutionState,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
+            int pageSize,
             boolean pinStart,
-            ConcurrentHashMap<String, FeedResponse<Tick>> feedResponseCache,
-            int pageSize) {
+            int totalTicks) {
+
+        TickRequestContextPerPartitionKey tickRequestContext
+                = TickServiceUtils.evaluateTickRequestContextToExecute(ricQueryExecutionState);
+
+        if (tickRequestContext == null) {
+            ricQueryExecutionState.setCompleted(true);
+            return;
+        }
 
         CosmosAsyncContainer asyncContainer = tickRequestContext.getAsyncContainer();
         CosmosQueryRequestOptions queryRequestOptions = new CosmosQueryRequestOptions();
 
-        queryRequestOptions.setPartitionKey(new PartitionKey(tickRequestContext.getTickIdentifier()));
-
         SqlQuerySpec querySpec = tickRequestContext.getSqlQuerySpec() != null ? tickRequestContext.getSqlQuerySpec() : getSqlQuerySpec(
+                tickRequestContext.getTickIdentifier(),
                 docTypes,
                 startTime,
                 endTime,
                 tickRequestContext.getRequestDateAsString(),
                 tickRequestContext.getDateFormat(),
-                pinStart
-        );
+                pinStart,
+                totalTicks);
 
         tickRequestContext.setSqlQuerySpec(querySpec);
 
@@ -300,7 +335,8 @@ public class TickServiceImpl implements TicksService {
             if (response != null) {
                 tickRequestContext.setContinuationToken(response.getContinuationToken() != null ? response.getContinuationToken() : "drained");
                 tickRequestContext.addCosmosDiagnostics(response.getCosmosDiagnostics());
-                feedResponseCache.put(tickRequestContext.getId(), response);
+
+                ricQueryExecutionState.addTicks(response.getResults(), totalTicks);
             }
         } catch (CosmosException e) {
             logger.error("Cosmos exception during page fetch: {}", e.getMessage(), e);
@@ -311,12 +347,14 @@ public class TickServiceImpl implements TicksService {
     }
 
     private SqlQuerySpec getSqlQuerySpec(
+            String tickIdentifier,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
             String localDateAsString,
             String format,
-            boolean pinStart) {
+            boolean pinStart,
+            int totalTicks) {
 
         LocalDate localDate = LocalDate.parse(localDateAsString, DateTimeFormatter.ofPattern(format));
 
@@ -347,53 +385,30 @@ public class TickServiceImpl implements TicksService {
 
         docTypePlaceholders.append(")");
 
+        StringBuilder partitionKeyPlaceholders = new StringBuilder();
+        partitionKeyPlaceholders.append("(");
+
+        for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
+            String param = "@pk" + i;
+            parameters.add(new SqlParameter(param, tickIdentifier + "|" + i));
+            partitionKeyPlaceholders.append(param);
+            if (i <= this.cosmosDbAccountConfiguration.getShardCountPerRic() - 1) {
+                partitionKeyPlaceholders.append(", ");
+            }
+        }
+
+        partitionKeyPlaceholders.append(")");
+
         if (pinStart) {
-            String query = "SELECT * FROM C WHERE C.docType IN " + docTypePlaceholders +
-                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp DESC";
+            String query = "SELECT * FROM C WHERE C.pk IN " + partitionKeyPlaceholders + " AND C.docType IN " + docTypePlaceholders +
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.messageTimestamp ASC OFFSET 0 LIMIT " + totalTicks;
 
             return new SqlQuerySpec(query, parameters);
         } else {
-            String query = "SELECT * FROM C WHERE C.docType IN " + docTypePlaceholders +
-                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp ASC";
+            String query = "SELECT * FROM C WHERE C.pk IN " + partitionKeyPlaceholders + " AND C.docType IN " + docTypePlaceholders +
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.messageTimestamp DESC OFFSET 0 LIMIT " + totalTicks;
 
             return new SqlQuerySpec(query, parameters);
         }
     }
-
-    public List<Tick> findTopNAcrossOnePage(List<FeedResponse<Tick>> responses, int topN, boolean pinStart) {
-        PriorityQueue<TickEntry> globalOrderedTicks = new PriorityQueue<>();
-
-        // PK1: [29, 27] (array of message timestamps)
-        // PK2: [30, 28] (array of message timestamps)
-        for (int i = 0; i < responses.size(); i++) {
-            List<Tick> ticks = responses.get(i).getResults();
-
-            if (ticks != null && !ticks.isEmpty()) {
-                int firstIndex = 0;
-                globalOrderedTicks.offer(new TickEntry(ticks.get(firstIndex), i, firstIndex, pinStart));
-            }
-        }
-
-        // globalOrderedTicks -> [30, 29]
-
-        List<Tick> topNTicks = new ArrayList<>();
-
-        while (!globalOrderedTicks.isEmpty() && topNTicks.size() < topN) {
-
-            TickEntry tickEntry = globalOrderedTicks.poll();
-
-            topNTicks.add(tickEntry.getTick());
-
-            if (tickEntry.getElementIndex() < responses.get(tickEntry.getListIndex()).getResults().size() - 1) {
-                int nextElementIndex = tickEntry.getElementIndex() + 1;
-                int nextListIndex = tickEntry.getListIndex();
-
-                Tick nextTick = responses.get(nextListIndex).getResults().get(nextElementIndex);
-
-                globalOrderedTicks.offer(new TickEntry(nextTick, nextListIndex, nextElementIndex, pinStart));
-            }
-        }
-
-        return topNTicks;
-    }
-} 
+}

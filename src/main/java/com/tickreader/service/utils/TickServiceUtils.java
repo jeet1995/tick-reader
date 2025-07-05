@@ -1,6 +1,8 @@
 package com.tickreader.service.utils;
 
 import com.azure.cosmos.CosmosException;
+import com.tickreader.service.impl.RicQueryExecutionState;
+import com.tickreader.service.impl.TickRequestContextPerPartitionKey;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -12,18 +14,57 @@ public final class TickServiceUtils {
 
     private TickServiceUtils() {}
 
-    public static List<String> getLocalDatesBetweenTwoLocalDateTimes(LocalDateTime startTime, LocalDateTime endTime, String format) {
+    public static List<String> getLocalDatesBetweenTwoLocalDateTimes(
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            String format,
+            boolean pinStart) {
+
         List<String> dates = new ArrayList<>();
 
-        LocalDate current = startTime.toLocalDate();
-        LocalDate endDate = endTime.toLocalDate();
+        if (pinStart) {
 
-        while (!current.isAfter(endDate)) {
-            dates.add(current.format(DateTimeFormatter.ofPattern(format)));
-            current = current.plusDays(1);
+            LocalDate current = startTime.toLocalDate();
+            LocalDate endDate = endTime.toLocalDate();
+
+            while (!current.isAfter(endDate)) {
+                dates.add(current.format(DateTimeFormatter.ofPattern(format)));
+                current = current.plusDays(1);
+            }
+        } else {
+
+
+            LocalDate current = endTime.toLocalDate();
+            LocalDate endDate = startTime.toLocalDate();
+
+            while (!current.isBefore(endDate)) {
+                dates.add(current.format(DateTimeFormatter.ofPattern(format)));
+                current = current.minusDays(1);
+            }
         }
 
         return dates;
+    }
+
+    public static TickRequestContextPerPartitionKey evaluateTickRequestContextToExecute(RicQueryExecutionState ricQueryExecutionState) {
+        List<TickRequestContextPerPartitionKey> tickRequestContexts = ricQueryExecutionState.getTickRequestContexts();
+
+        if (ricQueryExecutionState.isCompleted()) {
+            return null;
+        }
+
+        if (tickRequestContexts.isEmpty()) {
+            throw new IllegalStateException("No TickRequestContextPerPartitionKey found for the given RicQueryExecutionState.");
+        }
+
+        for (TickRequestContextPerPartitionKey tickRequestContextPerPartitionKey : tickRequestContexts) {
+
+            if (tickRequestContextPerPartitionKey.getContinuationToken() == null || !tickRequestContextPerPartitionKey.getContinuationToken().equalsIgnoreCase("drained")) {
+                return tickRequestContextPerPartitionKey;
+            }
+        }
+
+        return null;
     }
 
     public static String constructTickIdentifierPrefix(String ric, String date) {
