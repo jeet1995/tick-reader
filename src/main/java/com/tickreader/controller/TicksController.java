@@ -38,15 +38,20 @@ public class TicksController {
             @RequestParam(required = false, defaultValue = "false") boolean includeDiagnostics,
             @RequestParam(required = false) List<String> projections) {
 
-        TickResponse tickResponse = ticksService.getTicks(
-                rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues, pageSize, includeDiagnostics, projections);
+        try {
+            TickResponse tickResponse = ticksService.getTicks(
+                    rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues, pageSize, includeDiagnostics, projections);
 
-        if (logger.isDebugEnabled()) {
-            logger.debug("Request parameters: rics={}, totalTicks={}, pinStart={}, startTime={}, endTime={}, projections={}",
-                    rics, totalTicks, pinStart, startTime, endTime, projections);
-            logger.debug("Ticks fetched: {}", tickResponse.getTicks().size());
+            if (logger.isDebugEnabled()) {
+                logger.debug("Request parameters: rics={}, totalTicks={}, pinStart={}, startTime={}, endTime={}, projections={}",
+                        rics, totalTicks, pinStart, startTime, endTime, projections);
+                logger.debug("Ticks fetched: {}", tickResponse.getTicks().size());
+            }
+
+            return tickResponse;
+        } catch (IllegalArgumentException e) {
+            logger.error("Invalid projections parameter: {}", e.getMessage());
+            throw e; // Re-throw to return 400 Bad Request
         }
-
-        return tickResponse;
     }
 }

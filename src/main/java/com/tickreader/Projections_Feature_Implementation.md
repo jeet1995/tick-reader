@@ -100,6 +100,53 @@ WHERE C.pk IN (@pk1, @pk2, ..., @pk8)
 ORDER BY C.messageTimestamp ASC OFFSET 0 LIMIT 100
 ```
 
+### Example 4: Error Scenarios
+
+#### Empty Projections List (Will Fail)
+```http
+GET /ticks/sort=messageTimestamp?rics=AAPL&docTypes=QUOTE&totalTicks=100&pinStart=true&startTime=2024-01-01T00:00:00&endTime=2024-01-01T23:59:59&projections=
+```
+
+**Response:**
+```json
+{
+  "timestamp": "2024-01-01T12:00:00.000Z",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Projections list cannot be empty. Either provide valid field names or omit the parameter to select all fields."
+}
+```
+
+#### Missing messageTimestamp (Will Fail)
+```http
+GET /ticks/sort=messageTimestamp?rics=AAPL&docTypes=QUOTE&totalTicks=100&pinStart=true&startTime=2024-01-01T00:00:00&endTime=2024-01-01T23:59:59&projections=id,BID,ASK
+```
+
+**Response:**
+```json
+{
+  "timestamp": "2024-01-01T12:00:00.000Z",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Projections list must include 'messageTimestamp' field for sorting functionality. Provided projections: [id, BID, ASK]"
+}
+```
+
+#### Invalid Field Name (Will Fail)
+```http
+GET /ticks/sort=messageTimestamp?rics=AAPL&docTypes=QUOTE&totalTicks=100&pinStart=true&startTime=2024-01-01T00:00:00&endTime=2024-01-01T23:59:59&projections=id,messageTimestamp,invalidField
+```
+
+**Response:**
+```json
+{
+  "timestamp": "2024-01-01T12:00:00.000Z",
+  "status": 500,
+  "error": "Internal Server Error",
+  "message": "Cosmos DB query error: Invalid field name 'invalidField'"
+}
+```
+
 ## Available Fields
 
 The following fields are available for projection (based on the `Tick` entity):
@@ -153,11 +200,32 @@ The following fields are available for projection (based on the `Tick` entity):
 4. **Monitor Performance**: Compare query performance with and without projections
 5. **Validate Field Names**: Ensure field names match exactly with the `Tick` entity properties
 
+## Validation Rules
+
+The projections parameter has the following validation rules:
+
+### 1. Empty List Validation
+- **Rule**: If projections list is provided (not null), it cannot be empty
+- **Error**: `IllegalArgumentException` with message: "Projections list cannot be empty. Either provide valid field names or omit the parameter to select all fields."
+- **HTTP Status**: 400 Bad Request
+
+### 2. Required Field Validation
+- **Rule**: If projections list is provided, it must include `messageTimestamp` field
+- **Reason**: `messageTimestamp` is required for sorting functionality (ORDER BY clause)
+- **Error**: `IllegalArgumentException` with message: "Projections list must include 'messageTimestamp' field for sorting functionality. Provided projections: [list]"
+- **HTTP Status**: 400 Bad Request
+
+### 3. Field Name Validation
+- **Rule**: Field names must match exactly with the `Tick` entity properties
+- **Error**: Cosmos DB will return an error for invalid field names
+- **HTTP Status**: 500 Internal Server Error (from Cosmos DB)
+
 ## Error Handling
 
-- If an invalid field name is provided in projections, Cosmos DB will return an error
-- The application will handle the error gracefully and return appropriate error responses
-- Field names are case-sensitive and must match the exact property names in the `Tick` entity
+- Validation errors are caught and logged at both controller and service levels
+- Invalid projections result in 400 Bad Request responses with descriptive error messages
+- Field name validation errors are handled by Cosmos DB and returned as 500 Internal Server Error
+- All validation errors are logged for debugging purposes
 
 ## Migration Guide
 

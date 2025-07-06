@@ -111,6 +111,7 @@ public class TickServiceImpl implements TicksService {
      * @param projections List of field names to include in the SELECT clause. If null or empty, selects all fields (SELECT *)
      * @return TickResponse containing the retrieved tick data and execution metrics
      * @throws RuntimeException if the query execution fails
+     * @throws IllegalArgumentException if projections validation fails
      */
     @Override
     public TickResponse getTicks(
@@ -124,6 +125,9 @@ public class TickServiceImpl implements TicksService {
             int pageSize,
             boolean includeDiagnostics,
             List<String> projections) {
+        
+        // Validate projections parameter
+        validateProjections(projections);
         
         try {
             // Execute the asynchronous query and wait for completion
@@ -640,5 +644,37 @@ public class TickServiceImpl implements TicksService {
 
             return new SqlQuerySpec(query, parameters);
         }
+    }
+
+    /**
+     * Validates the projections parameter to ensure it meets the required criteria.
+     * 
+     * Validation Rules:
+     * 1. If projections list is provided (not null), it cannot be empty
+     * 2. If projections list is provided, it must include 'messageTimestamp' field
+     *    (required for sorting functionality)
+     * 
+     * @param projections List of field names to validate
+     * @throws IllegalArgumentException if validation fails
+     */
+    private void validateProjections(List<String> projections) {
+        // If projections is null, it's valid (will use SELECT *)
+        if (projections == null) {
+            return;
+        }
+        
+        // Rule 1: If projections list is provided, it cannot be empty
+        if (projections.isEmpty()) {
+            logger.error("Projections list cannot be empty. Either provide valid field names or omit the parameter to select all fields.");
+            throw new IllegalArgumentException("Projections list cannot be empty. Either provide valid field names or omit the parameter to select all fields.");
+        }
+        
+        // Rule 2: If projections list is provided, it must include 'messageTimestamp'
+        if (!projections.contains("messageTimestamp")) {
+            logger.error("Projections list must include 'messageTimestamp' field for sorting functionality. Provided projections: {}", projections);
+            throw new IllegalArgumentException("Projections list must include 'messageTimestamp' field for sorting functionality. Provided projections: " + projections);
+        }
+        
+        logger.debug("Projections validation passed. Valid projections: {}", projections);
     }
 }
