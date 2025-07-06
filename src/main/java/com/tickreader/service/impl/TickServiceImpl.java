@@ -108,6 +108,7 @@ public class TickServiceImpl implements TicksService {
      * @param includeNullValues If true, includes null values in response; if false, filters them out
      * @param pageSize Number of items per page for pagination
      * @param includeDiagnostics If true, includes Cosmos DB diagnostics in response
+     * @param projections List of field names to include in the SELECT clause. If null or empty, selects all fields (SELECT *)
      * @return TickResponse containing the retrieved tick data and execution metrics
      * @throws RuntimeException if the query execution fails
      */
@@ -121,11 +122,12 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime endTime,
             boolean includeNullValues,
             int pageSize,
-            boolean includeDiagnostics) {
+            boolean includeDiagnostics,
+            List<String> projections) {
         
         try {
             // Execute the asynchronous query and wait for completion
-            return getTicksAsync(rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues, pageSize, includeDiagnostics).get();
+            return getTicksAsync(rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues, pageSize, includeDiagnostics, projections).get();
         } catch (InterruptedException | ExecutionException e) {
             logger.error("Error executing getTicks: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to get ticks", e);
@@ -156,6 +158,7 @@ public class TickServiceImpl implements TicksService {
      * @param includeNullValues Whether to include null values
      * @param pageSize Page size for pagination
      * @param includeDiagnostics Whether to include diagnostics
+     * @param projections List of field names to include in the SELECT clause. If null or empty, selects all fields (SELECT *)
      * @return CompletableFuture containing the TickResponse
      */
     private CompletableFuture<TickResponse> getTicksAsync(
@@ -167,7 +170,8 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime endTime,
             boolean includeNullValues,
             int pageSize,
-            boolean includeDiagnostics) {
+            boolean includeDiagnostics,
+            List<String> projections) {
 
         return CompletableFuture.supplyAsync(() -> {
             // Normalize time range - ensure startTime <= endTime
@@ -193,7 +197,8 @@ public class TickServiceImpl implements TicksService {
                     includeNullValues,
                     pinStart,
                     pageSize,
-                    includeDiagnostics);
+                    includeDiagnostics,
+                    projections);
         }, queryExecutorService);
     }
 
@@ -302,6 +307,7 @@ public class TickServiceImpl implements TicksService {
      * @param pinStart Sorting order flag
      * @param pageSize Page size for pagination
      * @param includeDiagnostics Whether to include diagnostics
+     * @param projections List of field names to include in the SELECT clause. If null or empty, selects all fields (SELECT *)
      * @return TickResponse with aggregated results and execution metrics
      */
     private TickResponse executeQueryWithTopNSorted(
@@ -315,7 +321,8 @@ public class TickServiceImpl implements TicksService {
             boolean includeNullValues,
             boolean pinStart,
             int pageSize,
-            boolean includeDiagnostics) {
+            boolean includeDiagnostics,
+            List<String> projections) {
 
         // Record execution start time for performance tracking
         Instant executionStartTime = Instant.now();
@@ -333,7 +340,7 @@ public class TickServiceImpl implements TicksService {
                 // Create concurrent tasks for each RIC execution state
                 List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
                         .map(ricQueryExecutionState -> CompletableFuture.runAsync(() ->
-                                        fetchNextPage(ricQueryExecutionState, docTypes, startTime, endTime, pageSize, pinStart, totalTicks),
+                                        fetchNextPage(ricQueryExecutionState, docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections),
                                 queryExecutorService))
                         .collect(Collectors.toList());
 
@@ -417,6 +424,7 @@ public class TickServiceImpl implements TicksService {
      * @param pageSize Number of items per page
      * @param pinStart Sorting order flag
      * @param totalTicks Maximum number of ticks to return
+     * @param projections List of field names to include in the SELECT clause. If null or empty, selects all fields (SELECT *)
      */
     private void fetchNextPage(
             RicQueryExecutionState ricQueryExecutionState,
@@ -425,7 +433,8 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime endTime,
             int pageSize,
             boolean pinStart,
-            int totalTicks) {
+            int totalTicks,
+            List<String> projections) {
 
         // Step 1: Get next available execution context
         TickRequestContextPerPartitionKey tickRequestContext
@@ -452,7 +461,8 @@ public class TickServiceImpl implements TicksService {
                 tickRequestContext.getRequestDateAsString(),
                 tickRequestContext.getDateFormat(),
                 pinStart,
-                totalTicks);
+                totalTicks,
+                projections);
 
         tickRequestContext.setSqlQuerySpec(querySpec);
 
@@ -517,9 +527,10 @@ public class TickServiceImpl implements TicksService {
      * - Time range filtering with nanosecond precision
      * - Sorting based on message timestamp
      * - Result limiting
+     * - Field projection (optional)
      * 
      * Query Structure:
-     * SELECT * FROM C 
+     * SELECT [projections] FROM C 
      * WHERE C.pk IN (@pk1, @pk2, ..., @pk8) 
      *   AND C.docType IN (@docType0, @docType1, ...) 
      *   AND C.messageTimestamp >= @startTime 
@@ -535,6 +546,7 @@ public class TickServiceImpl implements TicksService {
      * @param format Date format pattern
      * @param pinStart If true, sort ascending; if false, sort descending
      * @param totalTicks Maximum number of ticks to return
+     * @param projections List of field names to include in the SELECT clause. If null or empty, selects all fields (SELECT *)
      * @return SqlQuerySpec with parameterized query and parameters
      */
     private SqlQuerySpec getSqlQuerySpec(
@@ -545,7 +557,8 @@ public class TickServiceImpl implements TicksService {
             String localDateAsString,
             String format,
             boolean pinStart,
-            int totalTicks) {
+            int totalTicks,
+            List<String> projections) {
 
         // Parse the date string to get container-specific date bounds
         LocalDate localDate = LocalDate.parse(localDateAsString, DateTimeFormatter.ofPattern(format));
@@ -597,10 +610,22 @@ public class TickServiceImpl implements TicksService {
         }
         partitionKeyPlaceholders.append(")");
 
+        // Build SELECT clause with projections
+        String selectClause;
+        if (projections != null && !projections.isEmpty()) {
+            // Use specified projections
+            selectClause = "SELECT " + String.join(", ", projections.stream()
+                    .map(field -> "C." + field)
+                    .collect(Collectors.toList())) + " FROM C";
+        } else {
+            // Select all fields
+            selectClause = "SELECT * FROM C";
+        }
+
         // Build final query with appropriate sorting
         if (pinStart) {
             // Ascending order for pinStart=true
-            String query = "SELECT * FROM C WHERE C.pk IN " + partitionKeyPlaceholders + 
+            String query = selectClause + " WHERE C.pk IN " + partitionKeyPlaceholders + 
                           " AND C.docType IN " + docTypePlaceholders +
                           " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime " +
                           "ORDER BY C.messageTimestamp ASC OFFSET 0 LIMIT " + totalTicks;
@@ -608,7 +633,7 @@ public class TickServiceImpl implements TicksService {
             return new SqlQuerySpec(query, parameters);
         } else {
             // Descending order for pinStart=false
-            String query = "SELECT * FROM C WHERE C.pk IN " + partitionKeyPlaceholders + 
+            String query = selectClause + " WHERE C.pk IN " + partitionKeyPlaceholders + 
                           " AND C.docType IN " + docTypePlaceholders +
                           " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime " +
                           "ORDER BY C.messageTimestamp DESC OFFSET 0 LIMIT " + totalTicks;

@@ -35,14 +35,15 @@ public class TicksController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
             @RequestParam(required = false, defaultValue = "false") boolean includeNullValues,
             @RequestParam(required = false, defaultValue = "100") int pageSize,
-            @RequestParam(required = false, defaultValue = "false") boolean includeDiagnostics) {
+            @RequestParam(required = false, defaultValue = "false") boolean includeDiagnostics,
+            @RequestParam(required = false) List<String> projections) {
 
         TickResponse tickResponse = ticksService.getTicks(
-                rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues, pageSize, includeDiagnostics);
+                rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues, pageSize, includeDiagnostics, projections);
 
         if (logger.isDebugEnabled()) {
-            logger.debug("Request parameters: rics={}, totalTicks={}, pinStart={}, startTime={}, endTime={}",
-                    rics, totalTicks, pinStart, startTime, endTime);
+            logger.debug("Request parameters: rics={}, totalTicks={}, pinStart={}, startTime={}, endTime={}, projections={}",
+                    rics, totalTicks, pinStart, startTime, endTime, projections);
             logger.debug("Ticks fetched: {}", tickResponse.getTicks().size());
         }
 
