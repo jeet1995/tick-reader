@@ -1,30 +1,32 @@
 # tick-reader
 
-A Spring Boot application that queries tick data given list of RICs and date range.
+A Spring Boot application that queries tick data from Cosmos DB with advanced filtering and projection capabilities.
 
-# Configuration
+## Features
 
-## System Properties and Environment Variables
+- **Multi-RIC Query Support**: Query tick data for multiple RICs simultaneously
+- **Advanced Filtering**: Support for range filters, price-volume filters, and string-based qualifiers filters
+- **Field Projections**: Select specific fields to reduce response payload size
+- **Parallel Processing**: Efficient parallel execution across multiple Cosmos DB containers
+- **Diagnostics**: Built-in query execution diagnostics and performance monitoring
+- **Pagination**: Internal pagination for large result sets
+
+## Configuration
+
+### System Properties and Environment Variables
 
 | System Property Name           | Environment Variable Name      | Default Value | Possible Value                     | Description                                                                                                                                                                               |
 |--------------------------------|--------------------------------|---------------|------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| COSMOS.CONNECTION_MODE         | COSMOS_CONNECTION_MODE         | LOW           | `GATEWAY`                          | The  connection mode which should be used when connecting to Cosmo DB. The possible values are `GATEWAY` (default) or `DIRECT`. The default value should be sufficient for this workload. |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| COSMOS.CONNECTION_MODE         | COSMOS_CONNECTION_MODE         | LOW           | `GATEWAY`                          | The connection mode which should be used when connecting to Cosmos DB. The possible values are `GATEWAY` (default) or `DIRECT`. The default value should be sufficient for this workload. |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | COSMOS.AAD_MANAGED_IDENTITY_ID | COSMOS_AAD_MANAGED_IDENTITY_ID | HIGH          | Auto-Discovery                     | The client-id of the managed identity to be used - if not specified picks one based on DefaultAzureCredential logic - if specified, it will always use that identity.                     |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | COSMOS.AAD_TENANT_ID           | COSMOS_AAD_TENANT_ID           | HIGH          | Auto-Discovery                     | The AAD tenant id for the Azure resources and identities.                                                                                                                                 |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | COSMOS.AAD_LOGIN_ENDPOINT      | COSMOS_AAD_LOGIN_ENDPOINT      | LOW           | https://login.microsoftonline.com/ | Only needs to be modified in non-public Azure clouds.                                                                                                                                     |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
-## application.yml
+### application.yml
 
 Configure accounts and database names for Cosmos DB in `application.yml`:
 
 An example configuration for two Cosmos DB accounts (count can vary) with different database names and URIs:
-
-### Portions of `application.yml`
-
-- `DATABASE_NAME_HASH_1`, `DATABASE_NAME_HASH_2`: The names of the databases in the respective Cosmos DB accounts.
-- `COSMOSDB_ACCOUNT_URI_HASH_1`, `COSMOSDB_ACCOUNT_URI_HASH_2`: The URIs of the respective Cosmos DB accounts.
-- `COSMOSDB_PREFERRED_REGIONS_HASH_1`, `COSMOSDB_PREFERRED_REGIONS_HASH_2`: Comma-separated preferred regions for each Cosmos DB account (E.g: "East US 2, West US"). Depending on this setting, `CosmosClient` will reach out to the container in that region order.
-- **NOTE:** The `hashId` and the outer no are to be kept the same.
 
 ```yaml
 ticks:
@@ -48,6 +50,12 @@ ticks:
   shardCountPerRic: 8
   implementation: "completeablefuture"
 ```
+
+**Configuration Parameters:**
+- `DATABASE_NAME_HASH_1`, `DATABASE_NAME_HASH_2`: The names of the databases in the respective Cosmos DB accounts.
+- `COSMOSDB_ACCOUNT_URI_HASH_1`, `COSMOSDB_ACCOUNT_URI_HASH_2`: The URIs of the respective Cosmos DB accounts.
+- `COSMOSDB_PREFERRED_REGIONS_HASH_1`, `COSMOSDB_PREFERRED_REGIONS_HASH_2`: Comma-separated preferred regions for each Cosmos DB account (E.g: "East US 2, West US"). Depending on this setting, `CosmosClient` will reach out to the container in that region order.
+- **NOTE:** The `hashId` and the outer number are to be kept the same.
 
 ## Container Setup
 
@@ -116,441 +124,225 @@ ticks:
 }
 ```
 
-### Payload Structure (POJO)
-
-```java
-package com.tickreader.entity;
-
-import com.fasterxml.jackson.annotation.JsonInclude;
-
-@JsonInclude(JsonInclude.Include.NON_NULL)
-public class Tick {
-
-    private String id;
-    private String pk;
-    private String ricName;
-    private Long messageTimestamp;
-    private Long executionTime;
-    private Integer msgSequence;
-    private Long recordKey;
-    private Long collectDatetime;
-    private Integer rtlWrap;
-    private Long rtl;
-    private String subRtl;
-    private String ruleSetVersion;
-    private String ruleId;
-    private String ruleVersionId;
-    private String ruleClauseNo;
-    private Long sourceDatetime;
-    private Double bid;
-    private Double bidSize;
-    private Double ask;
-    private Double askSize;
-    private Double midPrice;
-    private String dsplyName;
-    private Double yldTomat;
-    private Double bidYield;
-    private Double askYield;
-    private String srcRef1;
-    private String dlgCode1;
-    private String ctbtr1;
-    private String ctbLoc1;
-    private Double cnvParity;
-    private Double premium;
-    private Double smpMargin;
-    private Double dscMargin;
-    private Double impVolt;
-    private Double oas;
-    private Double delta;
-    private Double swapSprd;
-    private Double askSpread;
-    private Double astSwpspd;
-    private Double bidSpread;
-    private Double bmkSpd;
-    private Double bpv;
-    private Double ismaBYld;
-    private Double ismaAYld;
-    private Double midSpread;
-    private Double midYld1;
-    private Double cdsBasis;
-    private Double bevenInf;
-    private Double realYlda;
-    private Double realYldb;
-    private Double zspread;
-    private Double bmkYield;
-    private Double cnvEdge;
-    private Double fairPrice;
-    private Double yldtobest;
-    private Double yldtoworst;
-    private Double lastQuote;
-    private Double bondFloor;
-    private Double duration;
-    private Double convexity;
-    private Double oasBid;
-    private Double asp1m;
-    private Double asp3m;
-    private Double asp6m;
-    private Double netchng1;
-    private Double askFwdort;
-    private Double bidFwdort;
-    private Double bondFlr;
-    private Double cnvEdge1;
-    private Double yldbst;
-    private Double yldwst;
-    private Double openPrc;
-    private Double high1;
-    private Double low1;
-    private Double openYld;
-    private Double highYld;
-    private Double lowYld;
-    private Double benchPrc;
-    private String bkgdRef;
-    private Double nrgCrack;
-    private Double nrgFrght;
-    private Double nrgTop;
-    private Double yield;
-    private Double intBasis;
-    private Double intCds;
-    private Double modDurtn;
-    private Double swpPoint;
-    private Double cleanPrc;
-    private Long sourceDatetimeExt;
-    private Double cnvPrem;
-    private Double cnvRatio;
-    private Double currBid;
-    private Double currAsk;
-    private Double trtnPrice;
-    private String exchDate;
-    private String exchTime;
-    private Double quoteVal;
-    private String qteId;
-    private Double quoteSize;
-    private String isinCdD;
-    private String qualifiers;
-    private String userQualifiers;
-
-    public String getId() {
-        return id;
-    }
-
-    public void setId(String id) {
-        this.id = id;
-    }
-
-    public String getPk() {
-        return pk;
-    }
-
-    public void setPk(String pk) {
-        this.pk = pk;
-    }
-
-    public String getRicName() { return ricName; }
-    public void setRicName(String ricName) { this.ricName = ricName; }
-
-    public Long getMessageTimestamp() { return messageTimestamp; }
-    public void setMessageTimestamp(Long messageTimestamp) { this.messageTimestamp = messageTimestamp; }
-
-    public Long getExecutionTime() { return executionTime; }
-    public void setExecutionTime(Long executionTime) { this.executionTime = executionTime; }
-
-    public Integer getMsgSequence() { return msgSequence; }
-    public void setMsgSequence(Integer msgSequence) { this.msgSequence = msgSequence; }
-
-    public Long getRecordKey() { return recordKey; }
-    public void setRecordKey(Long recordKey) { this.recordKey = recordKey; }
-
-    public Long getCollectDatetime() { return collectDatetime; }
-    public void setCollectDatetime(Long collectDatetime) { this.collectDatetime = collectDatetime; }
-
-    public Integer getRtlWrap() { return rtlWrap; }
-    public void setRtlWrap(Integer rtlWrap) { this.rtlWrap = rtlWrap; }
-
-    public Long getRtl() { return rtl; }
-    public void setRtl(Long rtl) { this.rtl = rtl; }
-
-    public String getSubRtl() { return subRtl; }
-    public void setSubRtl(String subRtl) { this.subRtl = subRtl; }
-
-    public String getRuleSetVersion() { return ruleSetVersion; }
-    public void setRuleSetVersion(String ruleSetVersion) { this.ruleSetVersion = ruleSetVersion; }
-
-    public String getRuleId() { return ruleId; }
-    public void setRuleId(String ruleId) { this.ruleId = ruleId; }
-
-    public String getRuleVersionId() { return ruleVersionId; }
-    public void setRuleVersionId(String ruleVersionId) { this.ruleVersionId = ruleVersionId; }
-
-    public String getRuleClauseNo() { return ruleClauseNo; }
-    public void setRuleClauseNo(String ruleClauseNo) { this.ruleClauseNo = ruleClauseNo; }
-
-    public Long getSourceDatetime() { return sourceDatetime; }
-    public void setSourceDatetime(Long sourceDatetime) { this.sourceDatetime = sourceDatetime; }
-
-    public Double getBid() { return bid; }
-    public void setBid(Double bid) { this.bid = bid; }
-
-    public Double getBidSize() { return bidSize; }
-    public void setBidSize(Double bidSize) { this.bidSize = bidSize; }
-
-    public Double getAsk() { return ask; }
-    public void setAsk(Double ask) { this.ask = ask; }
-
-    public Double getAskSize() { return askSize; }
-    public void setAskSize(Double askSize) { this.askSize = askSize; }
-
-    public Double getMidPrice() { return midPrice; }
-    public void setMidPrice(Double midPrice) { this.midPrice = midPrice; }
-
-    public String getDsplyName() { return dsplyName; }
-    public void setDsplyName(String dsplyName) { this.dsplyName = dsplyName; }
-
-    public Double getYldTomat() { return yldTomat; }
-    public void setYldTomat(Double yldTomat) { this.yldTomat = yldTomat; }
-
-    public Double getBidYield() { return bidYield; }
-    public void setBidYield(Double bidYield) { this.bidYield = bidYield; }
-
-    public Double getAskYield() { return askYield; }
-    public void setAskYield(Double askYield) { this.askYield = askYield; }
-
-    public String getSrcRef1() { return srcRef1; }
-    public void setSrcRef1(String srcRef1) { this.srcRef1 = srcRef1; }
-
-    public String getDlgCode1() { return dlgCode1; }
-    public void setDlgCode1(String dlgCode1) { this.dlgCode1 = dlgCode1; }
-
-    public String getCtbtr1() { return ctbtr1; }
-    public void setCtbtr1(String ctbtr1) { this.ctbtr1 = ctbtr1; }
-
-    public String getCtbLoc1() { return ctbLoc1; }
-    public void setCtbLoc1(String ctbLoc1) { this.ctbLoc1 = ctbLoc1; }
-
-    public Double getCnvParity() { return cnvParity; }
-    public void setCnvParity(Double cnvParity) { this.cnvParity = cnvParity; }
-
-    public Double getPremium() { return premium; }
-    public void setPremium(Double premium) { this.premium = premium; }
-
-    public Double getSmpMargin() { return smpMargin; }
-    public void setSmpMargin(Double smpMargin) { this.smpMargin = smpMargin; }
-
-    public Double getDscMargin() { return dscMargin; }
-    public void setDscMargin(Double dscMargin) { this.dscMargin = dscMargin; }
-
-    public Double getImpVolt() { return impVolt; }
-    public void setImpVolt(Double impVolt) { this.impVolt = impVolt; }
-
-    public Double getOas() { return oas; }
-    public void setOas(Double oas) { this.oas = oas; }
-
-    public Double getDelta() { return delta; }
-    public void setDelta(Double delta) { this.delta = delta; }
-
-    public Double getSwapSprd() { return swapSprd; }
-    public void setSwapSprd(Double swapSprd) { this.swapSprd = swapSprd; }
-
-    public Double getAskSpread() { return askSpread; }
-    public void setAskSpread(Double askSpread) { this.askSpread = askSpread; }
-
-    public Double getAstSwpspd() { return astSwpspd; }
-    public void setAstSwpspd(Double astSwpspd) { this.astSwpspd = astSwpspd; }
-
-    public Double getBidSpread() { return bidSpread; }
-    public void setBidSpread(Double bidSpread) { this.bidSpread = bidSpread; }
-
-    public Double getBmkSpd() { return bmkSpd; }
-    public void setBmkSpd(Double bmkSpd) { this.bmkSpd = bmkSpd; }
-
-    public Double getBpv() { return bpv; }
-    public void setBpv(Double bpv) { this.bpv = bpv; }
-
-    public Double getIsmaBYld() { return ismaBYld; }
-    public void setIsmaBYld(Double ismaBYld) { this.ismaBYld = ismaBYld; }
-
-    public Double getIsmaAYld() { return ismaAYld; }
-    public void setIsmaAYld(Double ismaAYld) { this.ismaAYld = ismaAYld; }
-
-    public Double getMidSpread() { return midSpread; }
-    public void setMidSpread(Double midSpread) { this.midSpread = midSpread; }
-
-    public Double getMidYld1() { return midYld1; }
-    public void setMidYld1(Double midYld1) { this.midYld1 = midYld1; }
-
-    public Double getCdsBasis() { return cdsBasis; }
-    public void setCdsBasis(Double cdsBasis) { this.cdsBasis = cdsBasis; }
-
-    public Double getBevenInf() { return bevenInf; }
-    public void setBevenInf(Double bevenInf) { this.bevenInf = bevenInf; }
-
-    public Double getRealYlda() { return realYlda; }
-    public void setRealYlda(Double realYlda) { this.realYlda = realYlda; }
-
-    public Double getRealYldb() { return realYldb; }
-    public void setRealYldb(Double realYldb) { this.realYldb = realYldb; }
-
-    public Double getZspread() { return zspread; }
-    public void setZspread(Double zspread) { this.zspread = zspread; }
-
-    public Double getBmkYield() { return bmkYield; }
-    public void setBmkYield(Double bmkYield) { this.bmkYield = bmkYield; }
-
-    public Double getCnvEdge() { return cnvEdge; }
-    public void setCnvEdge(Double cnvEdge) { this.cnvEdge = cnvEdge; }
-
-    public Double getFairPrice() { return fairPrice; }
-    public void setFairPrice(Double fairPrice) { this.fairPrice = fairPrice; }
-
-    public Double getYldtobest() { return yldtobest; }
-    public void setYldtobest(Double yldtobest) { this.yldtobest = yldtobest; }
-
-    public Double getYldtoworst() { return yldtoworst; }
-    public void setYldtoworst(Double yldtoworst) { this.yldtoworst = yldtoworst; }
-
-    public Double getLastQuote() { return lastQuote; }
-    public void setLastQuote(Double lastQuote) { this.lastQuote = lastQuote; }
-
-    public Double getBondFloor() { return bondFloor; }
-    public void setBondFloor(Double bondFloor) { this.bondFloor = bondFloor; }
-
-    public Double getDuration() { return duration; }
-    public void setDuration(Double duration) { this.duration = duration; }
-
-    public Double getConvexity() { return convexity; }
-    public void setConvexity(Double convexity) { this.convexity = convexity; }
-
-    public Double getOasBid() { return oasBid; }
-    public void setOasBid(Double oasBid) { this.oasBid = oasBid; }
-
-    public Double getAsp1m() { return asp1m; }
-    public void setAsp1m(Double asp1m) { this.asp1m = asp1m; }
-
-    public Double getAsp3m() { return asp3m; }
-    public void setAsp3m(Double asp3m) { this.asp3m = asp3m; }
-
-    public Double getAsp6m() { return asp6m; }
-    public void setAsp6m(Double asp6m) { this.asp6m = asp6m; }
-
-    public Double getNetchng1() { return netchng1; }
-    public void setNetchng1(Double netchng1) { this.netchng1 = netchng1; }
-
-    public Double getAskFwdort() { return askFwdort; }
-    public void setAskFwdort(Double askFwdort) { this.askFwdort = askFwdort; }
-
-    public Double getBidFwdort() { return bidFwdort; }
-    public void setBidFwdort(Double bidFwdort) { this.bidFwdort = bidFwdort; }
-
-    public Double getBondFlr() { return bondFlr; }
-    public void setBondFlr(Double bondFlr) { this.bondFlr = bondFlr; }
-
-    public Double getCnvEdge1() { return cnvEdge1; }
-    public void setCnvEdge1(Double cnvEdge1) { this.cnvEdge1 = cnvEdge1; }
-
-    public Double getYldbst() { return yldbst; }
-    public void setYldbst(Double yldbst) { this.yldbst = yldbst; }
-
-    public Double getYldwst() { return yldwst; }
-    public void setYldwst(Double yldwst) { this.yldwst = yldwst; }
-
-    public Double getOpenPrc() { return openPrc; }
-    public void setOpenPrc(Double openPrc) { this.openPrc = openPrc; }
-
-    public Double getHigh1() { return high1; }
-    public void setHigh1(Double high1) { this.high1 = high1; }
-
-    public Double getLow1() { return low1; }
-    public void setLow1(Double low1) { this.low1 = low1; }
-
-    public Double getOpenYld() { return openYld; }
-    public void setOpenYld(Double openYld) { this.openYld = openYld; }
-
-    public Double getHighYld() { return highYld; }
-    public void setHighYld(Double highYld) { this.highYld = highYld; }
-
-    public Double getLowYld() { return lowYld; }
-    public void setLowYld(Double lowYld) { this.lowYld = lowYld; }
-
-    public Double getBenchPrc() { return benchPrc; }
-    public void setBenchPrc(Double benchPrc) { this.benchPrc = benchPrc; }
-
-    public String getBkgdRef() { return bkgdRef; }
-    public void setBkgdRef(String bkgdRef) { this.bkgdRef = bkgdRef; }
-
-    public Double getNrgCrack() { return nrgCrack; }
-    public void setNrgCrack(Double nrgCrack) { this.nrgCrack = nrgCrack; }
-
-    public Double getNrgFrght() { return nrgFrght; }
-    public void setNrgFrght(Double nrgFrght) { this.nrgFrght = nrgFrght; }
-
-    public Double getNrgTop() { return nrgTop; }
-    public void setNrgTop(Double nrgTop) { this.nrgTop = nrgTop; }
-
-    public Double getYield() { return yield; }
-    public void setYield(Double yield) { this.yield = yield; }
-
-    public Double getIntBasis() { return intBasis; }
-    public void setIntBasis(Double intBasis) { this.intBasis = intBasis; }
-
-    public Double getIntCds() { return intCds; }
-    public void setIntCds(Double intCds) { this.intCds = intCds; }
-
-    public Double getModDurtn() { return modDurtn; }
-    public void setModDurtn(Double modDurtn) { this.modDurtn = modDurtn; }
-
-    public Double getSwpPoint() { return swpPoint; }
-    public void setSwpPoint(Double swpPoint) { this.swpPoint = swpPoint; }
-
-    public Double getCleanPrc() { return cleanPrc; }
-    public void setCleanPrc(Double cleanPrc) { this.cleanPrc = cleanPrc; }
-
-    public Long getSourceDatetimeExt() { return sourceDatetimeExt; }
-    public void setSourceDatetimeExt(Long sourceDatetimeExt) { this.sourceDatetimeExt = sourceDatetimeExt; }
-
-    public Double getCnvPrem() { return cnvPrem; }
-    public void setCnvPrem(Double cnvPrem) { this.cnvPrem = cnvPrem; }
-
-    public Double getCnvRatio() { return cnvRatio; }
-    public void setCnvRatio(Double cnvRatio) { this.cnvRatio = cnvRatio; }
-
-    public Double getCurrBid() { return currBid; }
-    public void setCurrBid(Double currBid) { this.currBid = currBid; }
-
-    public Double getCurrAsk() { return currAsk; }
-    public void setCurrAsk(Double currAsk) { this.currAsk = currAsk; }
-
-    public Double getTrtnPrice() { return trtnPrice; }
-    public void setTrtnPrice(Double trtnPrice) { this.trtnPrice = trtnPrice; }
-
-    public String getExchDate() { return exchDate; }
-    public void setExchDate(String exchDate) { this.exchDate = exchDate; }
-
-    public String getExchTime() { return exchTime; }
-    public void setExchTime(String exchTime) { this.exchTime = exchTime; }
-
-    public Double getQuoteVal() { return quoteVal; }
-    public void setQuoteVal(Double quoteVal) { this.quoteVal = quoteVal; }
-
-    public String getQteId() { return qteId; }
-    public void setQteId(String qteId) { this.qteId = qteId; }
-
-    public Double getQuoteSize() { return quoteSize; }
-    public void setQuoteSize(Double quoteSize) { this.quoteSize = quoteSize; }
-
-    public String getIsinCdD() { return isinCdD; }
-    public void setIsinCdD(String isinCdD) { this.isinCdD = isinCdD; }
-
-    public String getQualifiers() { return qualifiers; }
-    public void setQualifiers(String qualifiers) { this.qualifiers = qualifiers; }
-
-    public String getUserQualifiers() { return userQualifiers; }
-    public void setUserQualifiers(String userQualifiers) { this.userQualifiers = userQualifiers; }
-}
-
+## API Endpoints
+
+### 1. Basic Tick Query with Projections
+
+**Endpoint:** `GET /ticks/sort=messageTimestamp`
+
+**Description:** Retrieves tick data with optional field projections to reduce response payload size.
+
+**Parameters:**
+
+| Parameter           | Description                                                                                                        | Required | Default Value | Example Value                  |
+|---------------------|--------------------------------------------------------------------------------------------------------------------|----------|---------------|--------------------------------|
+| `rics`              | Comma-separated list of RICs to query.                                                                             | Yes      | N/A           | `AAPL,MSFT,GOOGL`              |
+| `docTypes`          | Comma-separated list of document types to query.                                                                   | Yes      | N/A           | `TAS,TAQ`                      |
+| `totalTicks`        | Total number of ticks to return.                                                                                   | Yes      | N/A           | `5000`                         |
+| `pinStart`          | Whether to pin the start time for the query. If true, the start time will be pinned to the beginning of the day.   | Yes      | N/A           | `true`                         |
+| `startTime`         | Start time for the query in ISO 8601 format.                                                                       | Yes      | N/A           | `2024-10-07T00:00:00.0000000Z` |
+| `endTime`           | End time for the query in ISO 8601 format.                                                                         | Yes      | N/A           | `2024-10-07T23:59:59.9999999Z` |
+| `includeNullValues` | Whether to include ticks with null values in the response.                                                         | No       | `false`       | `true`                         |
+| `pageSize`          | Number of ticks to return per query which the CosmosClient internally executes.                                    | No       | `100`         | `1000`                         |
+| `includeDiagnostics`| Whether to include query execution diagnostics in the response.                                                    | No       | `false`       | `true`                         |
+| `projections`       | Comma-separated list of field names to include in the response. Core fields (id, ricName, messageTimestamp, pk) are always included. | No | All fields | `TRDPRC_1,TRDVOL_1,BID,ASK` |
+
+**Example Request:**
+```http
+GET /ticks/sort=messageTimestamp?rics=MSFT,AAPL,GOOGL&docTypes=TAS&totalTicks=10000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&pageSize=50&includeNullValues=true&projections=TRDPRC_1,TRDVOL_1,BID,ASK
 ```
 
-# Running the application
+### 2. Tick Query with Range Filters
 
-## Setting up the environment
+**Endpoint:** `GET /ticks/with-range-filters`
+
+**Description:** Retrieves tick data with optional range filters on `TRDPRC_1` and `TRNOVR_UNS` fields.
+
+**Additional Parameters:**
+
+| Parameter           | Description                                                                                                        | Required | Default Value | Example Value                  |
+|---------------------|--------------------------------------------------------------------------------------------------------------------|----------|---------------|--------------------------------|
+| `trdprc1Min`        | Minimum value for TRDPRC_1 field.                                                                                  | No       | N/A           | `100.0`                        |
+| `trdprc1Max`        | Maximum value for TRDPRC_1 field.                                                                                  | No       | N/A           | `200.0`                        |
+| `trnovrUnsMin`      | Minimum value for TRNOVR_UNS field.                                                                                | No       | N/A           | `1000000.0`                    |
+| `trnovrUnsMax`      | Maximum value for TRNOVR_UNS field.                                                                                | No       | N/A           | `5000000.0`                    |
+
+**Example Request:**
+```http
+GET /ticks/with-range-filters?rics=MSFT,AAPL&docTypes=TAS&totalTicks=5000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&trdprc1Min=100.0&trdprc1Max=200.0&trnovrUnsMin=1000000.0&projections=TRDPRC_1,TRNOVR_UNS
+```
+
+### 3. Tick Query with Price-Volume Filters
+
+**Endpoint:** `GET /ticks/with-price-volume-filters`
+
+**Description:** Retrieves tick data with filters on `TRDPRC_1` (between two values) and `TRDVOL_1` (greater than or equal to a value).
+
+**Additional Parameters:**
+
+| Parameter           | Description                                                                                                        | Required | Default Value | Example Value                  |
+|---------------------|--------------------------------------------------------------------------------------------------------------------|----------|---------------|--------------------------------|
+| `trdprc1Min`        | Minimum value for TRDPRC_1 field.                                                                                  | No       | N/A           | `100.0`                        |
+| `trdprc1Max`        | Maximum value for TRDPRC_1 field.                                                                                  | No       | N/A           | `200.0`                        |
+| `trdvol1Min`        | Minimum value for TRDVOL_1 field (greater than or equal).                                                         | No       | N/A           | `1000.0`                       |
+
+**Example Request:**
+```http
+GET /ticks/with-price-volume-filters?rics=MSFT,AAPL&docTypes=TAS&totalTicks=5000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&trdprc1Min=100.0&trdprc1Max=200.0&trdvol1Min=1000.0&projections=TRDPRC_1,TRDVOL_1
+```
+
+### 4. Tick Query with Qualifiers Filters
+
+**Endpoint:** `GET /ticks/with-qualifiers-filters`
+
+**Description:** Retrieves tick data with complex string filters on the `qualifiers` property using Cosmos DB string functions.
+
+**Additional Parameters:**
+
+| Parameter           | Description                                                                                                        | Required | Default Value | Example Value                  |
+|---------------------|--------------------------------------------------------------------------------------------------------------------|----------|---------------|--------------------------------|
+| `containsFilters`   | Comma-separated list of strings that must be contained in the qualifiers field.                                    | No       | N/A           | `"ACTIVE","LIQUID"`            |
+| `notContainsFilters`| Comma-separated list of strings that must NOT be contained in the qualifiers field.                               | No       | N/A           | `"HALTED","SUSPENDED"`         |
+| `startsWithFilters` | Comma-separated list of strings that the qualifiers field must start with.                                        | No       | N/A           | `"ACTIVE"`                     |
+| `notStartsWithFilters`| Comma-separated list of strings that the qualifiers field must NOT start with.                                   | No       | N/A           | `"INACTIVE"`                   |
+
+**Example Request:**
+```http
+GET /ticks/with-qualifiers-filters?rics=MSFT,AAPL&docTypes=TAS&totalTicks=5000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&containsFilters=ACTIVE,LIQUID&notContainsFilters=HALTED&projections=qualifiers,TRDPRC_1
+```
+
+## Response Format
+
+All endpoints return the same response format:
+
+```json
+{
+  "ticks": [
+    {
+      "id": "b1d19bdb-dc8b-47db-a2ab-e46827e66fbd",
+      "pk": "AAPL|20241008|6",
+      "ricName": "AAPL",
+      "messageTimestamp": 1728375596311321505,
+      "executionTime": 8504,
+      "recordKey": 574062,
+      "TRDPRC_1": 150.25,
+      "TRDVOL_1": 1000000.0,
+      "BID": 150.20,
+      "ASK": 150.30,
+      "qualifiers": "ACTIVE,LIQUID"
+    }
+  ],
+  "diagnosticsList": ["..."],
+  "executionTime": "PT0.8935116S"
+}
+```
+
+## Complete Tick POJO Structure
+
+The `Tick` entity contains the following fields:
+
+### Core Fields (Always Included)
+- `id` (String): Unique identifier
+- `pk` (String): Partition key
+- `ricName` (String): RIC name
+- `messageTimestamp` (Long): Message timestamp
+
+### Trading Fields
+- `TRDPRC_1` (Double): Trade price
+- `TRDVOL_1` (Double): Trade volume
+- `TRNOVR_UNS` (Double): Turnover
+- `BID` (Double): Bid price
+- `BIDSIZE` (Double): Bid size
+- `ASK` (Double): Ask price
+- `ASKSIZE` (Double): Ask size
+- `MID_PRICE` (Double): Mid price
+- `VWAP` (Double): Volume weighted average price
+
+### Market Data Fields
+- `OPEN_PRC` (Double): Open price
+- `HIGH_1` (Double): High price
+- `LOW_1` (Double): Low price
+- `YIELD` (Double): Yield
+- `DURATION` (Double): Duration
+- `CONVEXITY` (Double): Convexity
+- `DELTA` (Double): Delta
+- `GAMMA` (Double): Gamma
+- `THETA` (Double): Theta
+- `VEGA` (Double): Vega
+- `RHO` (Double): Rho
+
+### Fixed Income Fields
+- `BID_YIELD` (Double): Bid yield
+- `ASK_YIELD` (Double): Ask yield
+- `MID_YLD_1` (Double): Mid yield
+- `OAS` (Double): Option adjusted spread
+- `ZSPREAD` (Double): Z-spread
+- `BMK_SPD` (Double): Benchmark spread
+- `CDS_BASIS` (Double): CDS basis
+- `SWAP_SPRD` (Double): Swap spread
+
+### Volume and Turnover Fields
+- `ACVOL_1` (Double): Accumulated volume
+- `TOT_VOLUME` (Long): Total volume
+- `BLKVOLUM` (Long): Block volume
+- `VOLUME_ADV` (Long): Volume advancing
+- `VOLUME_DEC` (Long): Volume declining
+- `VOLUME_UNC` (Long): Volume unchanged
+
+### Metadata Fields
+- `executionTime` (Long): Execution time
+- `msgSequence` (Integer): Message sequence
+- `RecordKey` (Long): Record key
+- `COLLECT_DATETIME` (Long): Collection datetime
+- `SOURCE_DATETIME` (Long): Source datetime
+- `ChangeTimeStamp` (Long): Change timestamp
+- `SEQNUM` (String): Sequence number
+- `TRDXID_1` (String): Trade exchange ID
+- `TRADE_ID` (String): Trade ID
+
+### Qualifiers and User Fields
+- `qualifiers` (String): Qualifiers string
+- `user_qualifiers` (String): User qualifiers
+
+### Additional Trading Fields
+- `PRCTCK_1` (String): Price tick
+- `BID_TICK_1` (String): Bid tick
+- `TRD_STATUS` (String): Trade status
+- `HALT_RSN` (String): Halt reason
+- `TRD_RIC` (String): Trade RIC
+- `MMT_CLASS` (String): MMT class
+- `INST_DESC` (String): Instrument description
+
+### Performance and Analytics Fields
+- `NETCHNG_1` (Double): Net change
+- `PCTCHNG` (Double): Percentage change
+- `FAIR_VALUE` (Double): Fair value
+- `THEO_PRC` (Double): Theoretical price
+- `IMP_VOLT` (Double): Implied volatility
+- `IMP_YIELD` (Double): Implied yield
+
+### Time Series Fields
+- `messageTimestamp_st` (String): Message timestamp string
+- `messageTimestamp_dt` (LocalDateTime): Message timestamp datetime
+- `messageTimestamp_ns` (Integer): Message timestamp nanoseconds
+- `executionTime_st` (String): Execution time string
+- `executionTime_dt` (LocalDateTime): Execution time datetime
+- `executionTime_ns` (Integer): Execution time nanoseconds
+
+### Additional Fields
+The complete Tick entity contains over 400 fields covering various aspects of financial market data including:
+- Bond-specific fields (coupon rates, maturity dates, etc.)
+- Option-specific fields (strike prices, expiration dates, etc.)
+- Currency and exchange rate fields
+- Economic indicator fields
+- Technical analysis fields
+- Risk management fields
+
+For the complete list of all available fields, refer to the `Tick.java` entity class.
+
+## Running the Application
+
+### Setting up the environment
 
 - Ensure you have Java 17 or higher installed.
   - https://learn.microsoft.com/en-us/java/openjdk/download
@@ -558,7 +350,7 @@ public class Tick {
 - Ensure you have Maven installed.
   - https://maven.apache.org/install.html
 
-## AAD Setup
+### AAD Setup
 
 - To assign the data-plane access to the identity of the application, follow the steps in the Azure documentation:
   - https://learn.microsoft.com/en-us/azure/cosmos-db/nosql/how-to-grant-data-plane-access?tabs=built-in-definition%2Ccsharp&pivots=azure-interface-cli
@@ -570,63 +362,19 @@ public class Tick {
 az cosmosdb sql role assignment create --resource-group "<resource-group>" --account-name "<cosmos-db-account-name>" --role-definition-id "00000000-0000-0000-0000-000000000002" --principal-id "<service-principal-id>" --scope "" --subscription "<subscription>"        
 ```
 
-## Building the application into an executable JAR
+### Building the application into an executable JAR
 
-```
+```bash
 mvn clean package
 ```
 
-## Running the application
+### Running the application
 
-```
+```bash
 java "-DCOSMOS.SWITCH_OFF_IO_THREAD_FOR_RESPONSE=true" -jar target/tick-reader-app.jar
 ```
 
-# Executing requests
-
-A sample request to query tick data for specific RICs and a date range can be made using the following HTTP GET request:
-
-## Relevant Request Parameters
-
-| Parameter           | Description                                                                                                        | Required | Default Value | Example Value                  |
-|---------------------|--------------------------------------------------------------------------------------------------------------------|----------|---------------|--------------------------------|
-| `rics`              | Comma-separated list of RICs to query.                                                                             | Yes      | N/A           | `AAPL,MSFT,GOOGL`              |
-| `docTypes`          | Comma-separated list of document types to query.                                                                   | Yes      | N/A           | `TAS,TAQ`                      |
-| `totalTicks`        | Total number of ticks to return.                                                                                   | Yes      | N/A           | `5000`                         |
-| `pinStart`          | Whether to pin the start time for the query. If true, the start time will be pinned to the beginning of the day.   | Yes      | N/A           | `true`                         |
-| `startTime`         | Start time for the query in ISO 8601 format.                                                                       | Yes      | N/A           | `2024-10-07T00:00:00.0000000Z` |
-| `endTime`           | End time for the query in ISO 8601 format.                                                                         | Yes      | N/A           | `2024-10-07T23:59:59.9999999Z` |
-| `pageSize`          | Number of ticks to return per query which the CosmosClient internally executes (the API itself doesn't do paging). | Yes      | `100`         | `1000`                         |
-| `includeNullValues` | Whether to include ticks with null values in the response.                                                         | No       | `false`       | `true`                         |
-
-
-```http request
-http://localhost:8080/ticks/sort=messageTimestamp?rics=MSFT,AAPL,GOOGL,EUR=&docTypes=TAS&totalTicks=10000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&pageSize=50&includeNullValues=true
-```
-
-## Response
-
-A sample response will look like below:
-
-```json
-{
-  "ticks": [
-    {
-      "id": "b1d19bdb-dc8b-47db-a2ab-e46827e66fbd",
-      "pk": "AAPL|20241008|6",
-      "ricName": "AAPL",
-      "messageTimestamp": 1728375596311321505,
-      "executionTime": 8504,
-      "recordkey": 574062
-    }
-  ],
-  "diagnosticsList": [ "..." ],
-  "executionTime": "PT0.8935116S"
-}
-```
-
-# Code flow
-
+## Code Flow
 
 The code flow of the application is as follows:
 
@@ -654,11 +402,26 @@ flowchart TD
         end
 ```
 
-## Description of the flow
+### Description of the flow
 
-- The `TickServiceImpl` encapsulates the implementation details for querying tick data. 
-- First, it builds a list of `TickRequestContextPerPartitionKey` objects. 
+- The `TickServiceImpl` encapsulates the implementation details for querying tick data.
+- First, it builds a list of `TickRequestContextPerPartitionKey` objects.
 - `TickRequestContextPerPartitionKey` is a data structure that holds the necessary metadata for querying ticks associated with a `<RIC|day|shard>` against a particular `CosmosContainer` instance. It stores the continuation (to fetch the next page) and a list of `CosmosDiagnosticsContext` to collect diagnostics information for each query execution.
 - Each `TickRequestContext` is responsible for executing the query against the Cosmos DB container.
 - The `findTopNAcrossOnePage` method is called to find the top N ticks across all pages fetched for each `TickRequestContextPerPartitionKey`. It uses a priority queue to efficiently maintain the top N ticks across all pages spanning an iteration (1 execution across all `fetchNextPage`).
-- The series of `fetchNextPage` followed by `findTopNAcrossOnePage` is repeatedly executed until required count of ticks have been collected or each query executed (per `TickRequestContextPerPartitionKey`)  has been drained completely.
+- The series of `fetchNextPage` followed by `findTopNAcrossOnePage` is repeatedly executed until required count of ticks have been collected or each query executed (per `TickRequestContextPerPartitionKey`) has been drained completely.
+
+## Security Considerations
+
+- **Field Validation**: All projection fields are validated against a whitelist to prevent SQL injection
+- **Parameter Binding**: All query parameters are properly bound to prevent injection attacks
+- **Authentication**: Uses Azure AD managed identity for secure authentication
+- **Authorization**: Requires appropriate Cosmos DB data plane permissions
+
+## Performance Considerations
+
+- **Parallel Processing**: Queries are executed in parallel across multiple containers
+- **Pagination**: Internal pagination reduces memory usage for large result sets
+- **Projections**: Field projections reduce network bandwidth and processing time
+- **Indexing**: Proper composite indexes ensure efficient query execution
+- **Connection Pooling**: Efficient connection management for Cosmos DB clients
