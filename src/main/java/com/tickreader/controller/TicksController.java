@@ -54,4 +54,117 @@ public class TicksController {
             throw e; // Re-throw to return 400 Bad Request
         }
     }
+
+    @GetMapping("/with-range-filters")
+    public TickResponse getTicksWithRangeFilters(
+            @RequestParam List<String> rics,
+            @RequestParam List<String> docTypes,
+            @RequestParam int totalTicks,
+            @RequestParam boolean pinStart,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
+            @RequestParam(required = false, defaultValue = "false") boolean includeNullValues,
+            @RequestParam(required = false, defaultValue = "100") int pageSize,
+            @RequestParam(required = false, defaultValue = "false") boolean includeDiagnostics,
+            @RequestParam(required = false) List<String> projections,
+            @RequestParam(required = false) Double trdprc1Min,
+            @RequestParam(required = false) Double trdprc1Max,
+            @RequestParam(required = false) Double trnovrUnsMin,
+            @RequestParam(required = false) Double trnovrUnsMax) {
+
+        try {
+            TickResponse tickResponse = ticksService.getTicksWithRangeFilters(
+                    rics, docTypes, totalTicks, pinStart, startTime, endTime, 
+                    includeNullValues, pageSize, includeDiagnostics, projections,
+                    trdprc1Min, trdprc1Max, trnovrUnsMin, trnovrUnsMax);
+
+            if (logger.isDebugEnabled()) {
+                logger.debug("Request parameters: rics={}, totalTicks={}, pinStart={}, startTime={}, endTime={}, " +
+                        "projections={}, trdprc1Min={}, trdprc1Max={}, trnovrUnsMin={}, trnovrUnsMax={}",
+                        rics, totalTicks, pinStart, startTime, endTime, projections,
+                        trdprc1Min, trdprc1Max, trnovrUnsMin, trnovrUnsMax);
+                logger.debug("Ticks fetched: {}", tickResponse.getTicks().size());
+            }
+
+            return tickResponse;
+        } catch (IllegalArgumentException e) {
+            logger.error("Invalid parameters: {}", e.getMessage());
+            throw e; // Re-throw to return 400 Bad Request
+        }
+    }
+
+    @GetMapping("/with-price-volume-filters")
+    public TickResponse getTicksWithPriceVolumeFilters(
+            @RequestParam List<String> rics,
+            @RequestParam List<String> docTypes,
+            @RequestParam int totalTicks,
+            @RequestParam boolean pinStart,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
+            @RequestParam(required = false, defaultValue = "false") boolean includeNullValues,
+            @RequestParam(required = false, defaultValue = "100") int pageSize,
+            @RequestParam(required = false, defaultValue = "false") boolean includeDiagnostics,
+            @RequestParam(required = false) List<String> projections,
+            @RequestParam(required = false) Double trdprc1Min,
+            @RequestParam(required = false) Double trdprc1Max,
+            @RequestParam(required = false) Double trdvol1Min) {
+
+        try {
+            TickResponse tickResponse = ticksService.getTicksWithPriceVolumeFilters(
+                    rics, docTypes, totalTicks, pinStart, startTime, endTime, 
+                    includeNullValues, pageSize, includeDiagnostics, projections,
+                    trdprc1Min, trdprc1Max, trdvol1Min);
+
+            if (logger.isDebugEnabled()) {
+                logger.debug("Request parameters: rics={}, totalTicks={}, pinStart={}, startTime={}, endTime={}, " +
+                        "projections={}, trdprc1Min={}, trdprc1Max={}, trdvol1Min={}",
+                        rics, totalTicks, pinStart, startTime, endTime, projections,
+                        trdprc1Min, trdprc1Max, trdvol1Min);
+                logger.debug("Ticks fetched: {}", tickResponse.getTicks().size());
+            }
+
+            return tickResponse;
+        } catch (IllegalArgumentException e) {
+            logger.error("Invalid parameters: {}", e.getMessage());
+            throw e; // Re-throw to return 400 Bad Request
+        }
+    }
+
+    @GetMapping("/with-qualifiers-filters")
+    public TickResponse getTicksWithQualifiersFilters(
+            @RequestParam List<String> rics,
+            @RequestParam List<String> docTypes,
+            @RequestParam int totalTicks,
+            @RequestParam boolean pinStart,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
+            @RequestParam(required = false, defaultValue = "false") boolean includeNullValues,
+            @RequestParam(required = false, defaultValue = "100") int pageSize,
+            @RequestParam(required = false, defaultValue = "false") boolean includeDiagnostics,
+            @RequestParam(required = false) List<String> projections,
+            @RequestParam(required = false) List<String> containsFilters,
+            @RequestParam(required = false) List<String> notContainsFilters,
+            @RequestParam(required = false) List<String> startsWithFilters,
+            @RequestParam(required = false) List<String> notStartsWithFilters) {
+
+        try {
+            TickResponse tickResponse = ticksService.getTicksWithQualifiersFilters(
+                    rics, docTypes, totalTicks, pinStart, startTime, endTime, 
+                    includeNullValues, pageSize, includeDiagnostics, projections,
+                    containsFilters, notContainsFilters, startsWithFilters, notStartsWithFilters);
+
+            if (logger.isDebugEnabled()) {
+                logger.debug("Request parameters: rics={}, totalTicks={}, pinStart={}, startTime={}, endTime={}, " +
+                        "projections={}, containsFilters={}, notContainsFilters={}, startsWithFilters={}, notStartsWithFilters={}",
+                        rics, totalTicks, pinStart, startTime, endTime, projections,
+                        containsFilters, notContainsFilters, startsWithFilters, notStartsWithFilters);
+                logger.debug("Ticks fetched: {}", tickResponse.getTicks().size());
+            }
+
+            return tickResponse;
+        } catch (IllegalArgumentException e) {
+            logger.error("Invalid parameters: {}", e.getMessage());
+            throw e; // Re-throw to return 400 Bad Request
+        }
+    }
 }
