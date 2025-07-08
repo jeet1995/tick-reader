@@ -1667,7 +1667,7 @@ public class TickServiceImpl implements TicksService {
         partitionKeyPlaceholders.append(")");
 
         // Build SELECT clause based on projections
-        String selectClause = buildSelectClause(projections);
+        String selectClause = buildSelectClause("C", projections);
 
         // Build final query with appropriate sorting
         if (pinStart) {
@@ -1809,7 +1809,7 @@ public class TickServiceImpl implements TicksService {
         }
 
         // Build SELECT clause based on projections
-        String selectClause = buildSelectClause(projections);
+        String selectClause = buildSelectClause("C", projections);
 
         // Build final query with appropriate sorting
         if (pinStart) {
@@ -1951,7 +1951,7 @@ public class TickServiceImpl implements TicksService {
         }
 
         // Build SELECT clause based on projections
-        String selectClause = buildSelectClause(projections);
+        String selectClause = buildSelectClause("C", projections);
 
         // Build final query with appropriate sorting
         if (pinStart) {
@@ -2117,7 +2117,7 @@ public class TickServiceImpl implements TicksService {
         }
 
         // Build SELECT clause based on projections
-        String selectClause = buildSelectClause(projections);
+        String selectClause = buildSelectClause("C", projections);
 
         // Build final query with appropriate sorting
         if (pinStart) {
@@ -2149,7 +2149,7 @@ public class TickServiceImpl implements TicksService {
      * @param projections List of field names to include in the SELECT clause
      * @return String representing the SELECT clause
      */
-    private String buildSelectClause(List<String> projections) {
+    private String buildSelectClause(String containerAlias, List<String> projections) {
         if (projections == null || projections.isEmpty()) {
             return "*";
         }
@@ -2159,6 +2159,7 @@ public class TickServiceImpl implements TicksService {
                 .filter(projection -> projection != null && !projection.trim().isEmpty())
                 .map(projection -> projection.trim())
                 .filter(projection -> isValidFieldName(projection))
+                .map(projection -> containerAlias + "." + projection)
                 .collect(Collectors.toList());
 
         if (validatedProjections.isEmpty()) {
@@ -2166,7 +2167,13 @@ public class TickServiceImpl implements TicksService {
         }
 
         // Always include required core fields
-        Set<String> requiredFields = Set.of("id", "ricName", "messageTimestamp", "pk");
+        Set<String> requiredFields = new HashSet<>();
+
+        requiredFields.add(containerAlias + "." + "id");
+        requiredFields.add(containerAlias + "." + "ricName");
+        requiredFields.add(containerAlias + "." + "messageTimestamp");
+        requiredFields.add(containerAlias + "." + "pk");
+
         Set<String> allFields = new LinkedHashSet<>(requiredFields);
         allFields.addAll(validatedProjections);
 
