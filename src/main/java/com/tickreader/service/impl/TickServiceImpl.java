@@ -370,11 +370,7 @@ public class TickServiceImpl implements TicksService {
                 }
             }
 
-            Collections.sort(ticks, (t1, t2) -> Math.toIntExact(t2.getMessageTimestamp() - t1.getMessageTimestamp()));
-            // Apply sorting based on pinStart flag
-            if (pinStart) {
-                Collections.reverse(ticks);
-            }
+            Collections.sort(ticks, (t1, t2) -> t2.getMessageTimestamp().compareTo(t1.getMessageTimestamp()));
 
             resultTicks.addAll(ticks);
         }
@@ -601,10 +597,6 @@ public class TickServiceImpl implements TicksService {
         // Build final query with appropriate sorting
         if (pinStart) {
             // Ascending order for pinStart=true
-            String query = "SELECT * FROM C WHERE C.pk IN " + partitionKeyPlaceholders +
-                          " AND C.docType IN " + docTypePlaceholders +
-                          " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime " +
-                          "ORDER BY C.messageTimestamp ASC OFFSET 0 LIMIT " + totalTicks;
             String query = "SELECT * FROM C WHERE C.pk IN " + partitionKeyPlaceholders + " AND C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp ASC OFFSET 0 LIMIT " + totalTicks;
 
@@ -612,12 +604,6 @@ public class TickServiceImpl implements TicksService {
         } else {
             String query = "SELECT * FROM C WHERE C.pk IN " + partitionKeyPlaceholders + " AND C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp DESC OFFSET 0 LIMIT " + totalTicks;
-            // Descending order for pinStart=false
-            String query = "SELECT * FROM C WHERE C.pk IN " + partitionKeyPlaceholders +
-                          " AND C.docType IN " + docTypePlaceholders +
-                          " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime " +
-                          "ORDER BY C.messageTimestamp DESC OFFSET 0 LIMIT " + totalTicks;
-
             return new SqlQuerySpec(query, parameters);
         }
     }
