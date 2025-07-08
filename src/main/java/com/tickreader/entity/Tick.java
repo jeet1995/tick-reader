@@ -10,445 +10,861 @@ public class Tick extends BaseTick {
     private Long messageTimestamp;
     private Long executionTime;
     private Integer msgSequence;
+    @JsonProperty("RecordKey")
     private Long RecordKey;
+    @JsonProperty("COLLECT_DATETIME")
     private Long COLLECT_DATETIME;
+    @JsonProperty("RTL_Wrap")
     private Integer RTL_Wrap;
+    @JsonProperty("RTL")
     private Long RTL;
+    @JsonProperty("Sub_RTL")
     private String Sub_RTL;
+    @JsonProperty("RuleSetVersion")
     private String RuleSetVersion;
+    @JsonProperty("RuleID")
     private String RuleID;
+    @JsonProperty("RuleVersionID")
     private String RuleVersionID;
+    @JsonProperty("RuleClauseNo")
     private String RuleClauseNo;
+    @JsonProperty("RecordType")
     private String RecordType;
+    @JsonProperty("RecordStatus")
     private String RecordStatus;
+    @JsonProperty("EditType")
     private String EditType;
+    @JsonProperty("SOURCE_DATETIME")
     private Long SOURCE_DATETIME;
+    @JsonProperty("SEQNUM")
     private String SEQNUM;
+    @JsonProperty("TRDXID_1")
     private String TRDXID_1;
+    @JsonProperty("BID")
     private Double BID;
+    @JsonProperty("BIDSIZE")
     private Double BIDSIZE;
+    @JsonProperty("BID_MMID1")
     private String BID_MMID1;
+    @JsonProperty("NO_BIDMMKR")
     private Long NO_BIDMMKR;
+    @JsonProperty("ASK")
     private Double ASK;
+    @JsonProperty("ASKSIZE")
     private Double ASKSIZE;
+    @JsonProperty("ASK_MMID1")
     private String ASK_MMID1;
+    @JsonProperty("NO_ASKMMKR")
     private Long NO_ASKMMKR;
+    @JsonProperty("MID_PRICE")
     private Double MID_PRICE;
+    @JsonProperty("DSPLY_NAME")
     private String DSPLY_NAME;
+    @JsonProperty("STRIKE_PRC")
     private Double STRIKE_PRC;
+    @JsonProperty("YLDTOMAT")
     private Double YLDTOMAT;
+    @JsonProperty("BUYER_ID")
     private String BUYER_ID;
+    @JsonProperty("SELLER_ID")
     private String SELLER_ID;
+    @JsonProperty("BID_YIELD")
     private Double BID_YIELD;
+    @JsonProperty("ASK_YIELD")
     private Double ASK_YIELD;
+    @JsonProperty("SRC_REF1")
     private String SRC_REF1;
+    @JsonProperty("SWAP_RATE")
     private Double SWAP_RATE;
+    @JsonProperty("DLG_CODE1")
     private String DLG_CODE1;
+    @JsonProperty("CTBTR_1")
     private String CTBTR_1;
+    @JsonProperty("CTB_LOC1")
     private String CTB_LOC1;
+    @JsonProperty("FIXING_1")
     private Double FIXING_1;
+    @JsonProperty("CNV_PARITY")
     private Double CNV_PARITY;
+    @JsonProperty("PREMIUM")
     private Double PREMIUM;
+    @JsonProperty("CONV_FAC")
     private Double CONV_FAC;
+    @JsonProperty("YLD_TO_CLL")
     private Double YLD_TO_CLL;
+    @JsonProperty("YLD_TO_PUT")
     private Double YLD_TO_PUT;
+    @JsonProperty("SMP_MARGIN")
     private Double SMP_MARGIN;
+    @JsonProperty("DSC_MARGIN")
     private Double DSC_MARGIN;
+    @JsonProperty("IMP_VOLT")
     private Double IMP_VOLT;
+    @JsonProperty("IMP_VOLTA")
     private Double IMP_VOLTA;
+    @JsonProperty("IMP_VOLTB")
     private Double IMP_VOLTB;
+    @JsonProperty("OAS")
     private Double OAS;
+    @JsonProperty("REF_YIELD")
     private Double REF_YIELD;
+    @JsonProperty("DELTA")
     private Double DELTA;
+    @JsonProperty("IMP_REPO")
     private Double IMP_REPO;
+    @JsonProperty("SWAP_SPRD")
     private Double SWAP_SPRD;
+    @JsonProperty("SWAP_YLD")
     private Double SWAP_YLD;
+    @JsonProperty("ASK_SPREAD")
     private Double ASK_SPREAD;
+    @JsonProperty("AST_SWPSPD")
     private Double AST_SWPSPD;
+    @JsonProperty("BID_SPREAD")
     private Double BID_SPREAD;
+    @JsonProperty("BMK_SPD")
     private Double BMK_SPD;
+    @JsonProperty("BPV")
     private Double BPV;
+    @JsonProperty("DISC_RATE")
     private Double DISC_RATE;
+    @JsonProperty("DISC_MRGA")
     private Double DISC_MRGA;
+    @JsonProperty("DISC_MRGB")
     private Double DISC_MRGB;
+    @JsonProperty("ISMA_B_YLD")
     private Double ISMA_B_YLD;
+    @JsonProperty("ISMA_A_YLD")
     private Double ISMA_A_YLD;
+    @JsonProperty("MID_SPREAD")
     private Double MID_SPREAD;
+    @JsonProperty("MID_YLD_1")
     private Double MID_YLD_1;
+    @JsonProperty("ASTSWPSD_A")
     private Double ASTSWPSD_A;
+    @JsonProperty("ASTSWPSD_B")
     private Double ASTSWPSD_B;
+    @JsonProperty("FIX_DATE")
     private Long FIX_DATE;
-
     @JsonProperty("30D_A_IM_C")
     private Double ThirtyD_A_IM_C;
-
     @JsonProperty("30D_A_IM_P")
     private Double ThirtyD_A_IM_P;
-
     @JsonProperty("60D_A_IM_C")
     private Double SixtyD_A_IM_C;
-
     @JsonProperty("60D_A_IM_P")
     private Double SixtyD_A_IM_P;
-
     @JsonProperty("90D_A_IM_C")
     private Double NinetyD_A_IM_C;
-
     @JsonProperty("90D_A_IM_P")
     private Double NinetyD_A_IM_P;
+    @JsonProperty("CDS_BASIS")
     private Double CDS_BASIS;
+    @JsonProperty("CDS_DV01")
     private Double CDS_DV01;
+    @JsonProperty("BEVEN_INF")
     private Double BEVEN_INF;
+    @JsonProperty("REAL_YLDA")
     private Double REAL_YLDA;
+    @JsonProperty("REAL_YLDB")
     private Double REAL_YLDB;
+    @JsonProperty("ZSPREAD")
     private Double ZSPREAD;
+    @JsonProperty("BMK_SPDA")
     private Double BMK_SPDA;
+    @JsonProperty("BMK_SPDB")
     private Double BMK_SPDB;
+    @JsonProperty("BMK_YIELD")
     private Double BMK_YIELD;
+    @JsonProperty("BP_VOLT")
     private Double BP_VOLT;
+    @JsonProperty("CAP_PREM")
     private Double CAP_PREM;
+    @JsonProperty("CNV_EDGE")
     private Double CNV_EDGE;
+    @JsonProperty("CONVX_BIAS")
     private Double CONVX_BIAS;
+    @JsonProperty("DISC_FACTR")
     private Double DISC_FACTR;
+    @JsonProperty("FAIR_PRICE")
     private Double FAIR_PRICE;
+    @JsonProperty("FC_AVSWPTS")
     private Double FC_AVSWPTS;
+    @JsonProperty("FCAST_MAX")
     private Double FCAST_MAX;
+    @JsonProperty("FCAST_MEAN")
     private Double FCAST_MEAN;
+    @JsonProperty("FCAST_MED")
     private Double FCAST_MED;
+    @JsonProperty("FCAST_MIN")
     private Double FCAST_MIN;
+    @JsonProperty("FCAST_STDV")
     private Double FCAST_STDV;
+    @JsonProperty("FLOOR_PREM")
     private Double FLOOR_PREM;
+    @JsonProperty("FUT_BASIS")
     private Double FUT_BASIS;
+    @JsonProperty("FUT_RISK")
     private Double FUT_RISK;
+    @JsonProperty("FWD_OR_ASK")
     private Double FWD_OR_ASK;
+    @JsonProperty("FWD_OR_BID")
     private Double FWD_OR_BID;
+    @JsonProperty("IMP_YIELD")
     private Double IMP_YIELD;
+    @JsonProperty("INDEX_SKEW")
     private Double INDEX_SKEW;
+    @JsonProperty("MEAN_REV")
     private Double MEAN_REV;
+    @JsonProperty("RESR_VOL")
     private Long RESR_VOL;
+    @JsonProperty("SH_RT_VOLT")
     private Double SH_RT_VOLT;
+    @JsonProperty("SWAP_PREM")
     private Double SWAP_PREM;
+    @JsonProperty("SWAP_SPRDA")
     private Double SWAP_SPRDA;
+    @JsonProperty("SWAP_SPRDB")
     private Double SWAP_SPRDB;
+    @JsonProperty("YLDTOBEST")
     private Double YLDTOBEST;
+    @JsonProperty("YLDTOWORST")
     private Double YLDTOWORST;
+    @JsonProperty("LAST_QUOTE")
     private Double LAST_QUOTE;
+    @JsonProperty("DISC_BID1")
     private Double DISC_BID1;
+    @JsonProperty("DISC_ASK1")
     private Double DISC_ASK1;
+    @JsonProperty("BOND_FLOOR")
     private Double BOND_FLOOR;
+    @JsonProperty("DURATION")
     private Double DURATION;
+    @JsonProperty("THETA")
     private Double THETA;
+    @JsonProperty("GAMMA")
     private Double GAMMA;
+    @JsonProperty("CONVEXITY")
     private Double CONVEXITY;
+    @JsonProperty("IMP_CORR")
     private Double IMP_CORR;
+    @JsonProperty("RUN_SPRD")
     private Double RUN_SPRD;
+    @JsonProperty("BASE_CORR")
     private Double BASE_CORR;
+    @JsonProperty("PAR_YLD")
     private Double PAR_YLD;
+    @JsonProperty("ZERO_YLD")
     private Double ZERO_YLD;
+    @JsonProperty("PRC_VOLTY")
     private Double PRC_VOLTY;
+    @JsonProperty("ChangeTimeStamp")
     private Long ChangeTimeStamp;
+    @JsonProperty("ChangeSequence")
     private Long ChangeSequence;
+    @JsonProperty("TAQFILTER")
     private Integer TAQFILTER;
+    @JsonProperty("RECOV_RATE")
     private Double RECOV_RATE;
+    @JsonProperty("DEFLT_PROB")
     private Double DEFLT_PROB;
+    @JsonProperty("OAS_BID")
     private Double OAS_BID;
+    @JsonProperty("OAS_ASK")
     private Double OAS_ASK;
+    @JsonProperty("YTM_BID")
     private Double YTM_BID;
+    @JsonProperty("YTM_ASK")
     private Double YTM_ASK;
+    @JsonProperty("PV01")
     private Double PV01;
+    @JsonProperty("UPLIMIT")
     private Double UPLIMIT;
+    @JsonProperty("LOLIMIT")
     private Double LOLIMIT;
+    @JsonProperty("CMP_YLD_B")
     private Double CMP_YLD_B;
+    @JsonProperty("CMP_YLD_A")
     private Double CMP_YLD_A;
+    @JsonProperty("ASP1M")
     private Double ASP1M;
+    @JsonProperty("ASP3M")
     private Double ASP3M;
+    @JsonProperty("ASP6M")
     private Double ASP6M;
+    @JsonProperty("CPN_FIXED1")
     private Double CPN_FIXED1;
+    @JsonProperty("THEO_SPD_B")
     private Double THEO_SPD_B;
+    @JsonProperty("THEO_SPD_M")
     private Double THEO_SPD_M;
+    @JsonProperty("THEO_SPD_A")
     private Double THEO_SPD_A;
+    @JsonProperty("THEO_PRC_B")
     private Double THEO_PRC_B;
+    @JsonProperty("THEO_PRC_M")
     private Double THEO_PRC_M;
+    @JsonProperty("THEO_PRC_A")
     private Double THEO_PRC_A;
+    @JsonProperty("CARRY_COST")
     private Double CARRY_COST;
+    @JsonProperty("ROLL_DOWN")
     private Double ROLL_DOWN;
+    @JsonProperty("CRD_TOTAL")
     private Double CRD_TOTAL;
+    @JsonProperty("FWD_RATE")
     private Double FWD_RATE;
+    @JsonProperty("CM_YLD")
     private Double CM_YLD;
+    @JsonProperty("B_DLR_CNT")
     private Long B_DLR_CNT;
+    @JsonProperty("A_DLR_CNT")
     private Long A_DLR_CNT;
+    @JsonProperty("SOV_SPREAD")
     private Double SOV_SPREAD;
+    @JsonProperty("AC_BID_ORD")
     private Long AC_BID_ORD;
+    @JsonProperty("AC_ASK_ORD")
     private Long AC_ASK_ORD;
+    @JsonProperty("AC_BORD_SZ")
     private Long AC_BORD_SZ;
+    @JsonProperty("AC_AORD_SZ")
     private Long AC_AORD_SZ;
+    @JsonProperty("LIMIT_INDQ")
     private String LIMIT_INDQ;
+    @JsonProperty("SH_SAL_RES")
     private String SH_SAL_RES;
+    @JsonProperty("TRD_STATUS")
     private String TRD_STATUS;
+    @JsonProperty("HALT_RSN")
     private String HALT_RSN;
+    @JsonProperty("NETCHNG_1")
     private Double NETCHNG_1;
+    @JsonProperty("EFF_DURTN")
     private Double EFF_DURTN;
+    @JsonProperty("EFF_CONVX")
     private Double EFF_CONVX;
+    @JsonProperty("ESPRD_TSRY")
     private Double ESPRD_TSRY;
+    @JsonProperty("FV_SPREAD")
     private Double FV_SPREAD;
+    @JsonProperty("FV_YIELD")
     private Double FV_YIELD;
+    @JsonProperty("FV_SCORE")
     private Double FV_SCORE;
+    @JsonProperty("FV_SCR_DEV")
     private Double FV_SCR_DEV;
+    @JsonProperty("FV_DV01")
     private Double FV_DV01;
+    @JsonProperty("THEO_PRC")
     private Double THEO_PRC;
+    @JsonProperty("GRS_BASIS")
     private Double GRS_BASIS;
+    @JsonProperty("FWD_RISK")
     private Double FWD_RISK;
+    @JsonProperty("HEDGERATIO")
     private Double HEDGERATIO;
+    @JsonProperty("NET_BASIS")
     private Double NET_BASIS;
+    @JsonProperty("INV_PRC")
     private Double INV_PRC;
+    @JsonProperty("INV_SPD")
     private Double INV_SPD;
+    @JsonProperty("IMB_PR_FR")
     private Double IMB_PR_FR;
+    @JsonProperty("IMB_PR_NR")
     private Double IMB_PR_NR;
+    @JsonProperty("IMB_PR_REF")
     private Double IMB_PR_REF;
+    @JsonProperty("IMB_PR_SH")
     private Long IMB_PR_SH;
+    @JsonProperty("IMB_SH")
     private Long IMB_SH;
+    @JsonProperty("IMB_SIDE")
     private String IMB_SIDE;
+    @JsonProperty("IMB_VA_IND")
     private String IMB_VA_IND;
+    @JsonProperty("IMB_ACT_TP")
     private String IMB_ACT_TP;
+    @JsonProperty("FCAST_HIGH")
     private Double FCAST_HIGH;
+    @JsonProperty("FCAST_LOW")
     private Double FCAST_LOW;
+    @JsonProperty("FCAST_MEDN")
     private Double FCAST_MEDN;
+    @JsonProperty("ASK_FWDORT")
     private Double ASK_FWDORT;
+    @JsonProperty("BID_FWDORT")
     private Double BID_FWDORT;
+    @JsonProperty("PAR_YLD1")
     private Double PAR_YLD1;
+    @JsonProperty("RUN_SPREAD")
     private Double RUN_SPREAD;
+    @JsonProperty("ZERO_YLD1")
     private Double ZERO_YLD1;
+    @JsonProperty("BMK_SPDASK")
     private Double BMK_SPDASK;
+    @JsonProperty("BMK_SPDBID")
     private Double BMK_SPDBID;
+    @JsonProperty("BOND_FLR")
     private Double BOND_FLR;
+    @JsonProperty("CNV_EDGE1")
     private Double CNV_EDGE1;
+    @JsonProperty("YLDBST")
     private Double YLDBST;
+    @JsonProperty("YLDWST")
     private Double YLDWST;
+    @JsonProperty("OPEN_PRC")
     private Double OPEN_PRC;
+    @JsonProperty("HIGH_1")
     private Double HIGH_1;
+    @JsonProperty("LOW_1")
     private Double LOW_1;
+    @JsonProperty("OPEN_YLD")
     private Double OPEN_YLD;
+    @JsonProperty("HIGH_YLD")
     private Double HIGH_YLD;
+    @JsonProperty("LOW_YLD")
     private Double LOW_YLD;
+    @JsonProperty("BENCH_PRC")
     private Double BENCH_PRC;
+    @JsonProperty("BKGD_REF")
     private String BKGD_REF;
+    @JsonProperty("NRG_CRACK")
     private Double NRG_CRACK;
+    @JsonProperty("NRG_FRGHT")
     private Double NRG_FRGHT;
+    @JsonProperty("NRG_TOP")
     private Double NRG_TOP;
+    @JsonProperty("TRDVOL_1")
     private Double TRDVOL_1;
+    @JsonProperty("YIELD")
     private Double YIELD;
+    @JsonProperty("BID_TICK_1")
     private String BID_TICK_1;
+    @JsonProperty("INT_BASIS")
     private Double INT_BASIS;
+    @JsonProperty("INT_CDS")
     private Double INT_CDS;
+    @JsonProperty("MOD_DURTN")
     private Double MOD_DURTN;
+    @JsonProperty("SWP_POINT")
     private Double SWP_POINT;
+    @JsonProperty("CLEAN_PRC")
     private Double CLEAN_PRC;
+    @JsonProperty("ISIN_CODE")
     private String ISIN_CODE;
+    @JsonProperty("MIC_CODE")
     private String MIC_CODE;
+    @JsonProperty("MIFIR_ID")
     private String MIFIR_ID;
+    @JsonProperty("MIFIR_U_AS")
     private String MIFIR_U_AS;
+    @JsonProperty("MIFIR_C_TP")
     private String MIFIR_C_TP;
+    @JsonProperty("SOURCE_DATETIME_EXT")
     private Long SOURCE_DATETIME_EXT;
+    @JsonProperty("QUOTE_VAL")
     private Double QUOTE_VAL;
+    @JsonProperty("QTE_ID")
     private String QTE_ID;
+    @JsonProperty("QUOTE_SIZE")
     private Double QUOTE_SIZE;
+    @JsonProperty("ISIN_CD_D")
     private String ISIN_CD_D;
+    @JsonProperty("TRTN_PRICE")
     private Double TRTN_PRICE;
+    @JsonProperty("CNV_PREM")
     private Double CNV_PREM;
+    @JsonProperty("CNV_RATIO")
     private Double CNV_RATIO;
+    @JsonProperty("CURR_BID")
     private Double CURR_BID;
+    @JsonProperty("CURR_ASK")
     private Double CURR_ASK;
+    @JsonProperty("EXCH_DATE")
     private String EXCH_DATE;
+    @JsonProperty("EXCH_TIME")
     private String EXCH_TIME;
+    @JsonProperty("SUM_ACTION_1")
     private String SUM_ACTION_1;
+    @JsonProperty("SUM_ACTION_2")
     private String SUM_ACTION_2;
+    @JsonProperty("SUM_ACTION_3")
     private String SUM_ACTION_3;
+    @JsonProperty("SUM_ACTION_4")
     private String SUM_ACTION_4;
+    @JsonProperty("SUM_ACTION_5")
     private String SUM_ACTION_5;
+    @JsonProperty("RHO")
     private Double RHO;
+    @JsonProperty("VEGA")
     private Double VEGA;
+    @JsonProperty("qualifiers")
     private String qualifiers;
+    @JsonProperty("user_qualifiers")
     private String user_qualifiers;
+    @JsonProperty("messageTimestamp_st")
     private String messageTimestamp_st;
+    @JsonProperty("executionTime_st")
     private String executionTime_st;
+    @JsonProperty("COLLECT_DATETIME_st")
     private String COLLECT_DATETIME_st;
+    @JsonProperty("SOURCE_DATETIME_st")
     private String SOURCE_DATETIME_st;
+    @JsonProperty("ChangeTimeStamp_st")
     private String ChangeTimeStamp_st;
+    @JsonProperty("messageTimestamp_dt")
     private java.time.LocalDateTime messageTimestamp_dt;
+    @JsonProperty("executionTime_dt")
     private java.time.LocalDateTime executionTime_dt;
+    @JsonProperty("COLLECT_DATETIME_dt")
     private java.time.LocalDateTime COLLECT_DATETIME_dt;
+    @JsonProperty("SOURCE_DATETIME_dt")
     private java.time.LocalDateTime SOURCE_DATETIME_dt;
+    @JsonProperty("ChangeTimeStamp_dt")
     private java.time.LocalDateTime ChangeTimeStamp_dt;
+    @JsonProperty("messageTimestamp_ns")
     private Integer messageTimestamp_ns;
+    @JsonProperty("executionTime_ns")
     private Integer executionTime_ns;
+    @JsonProperty("COLLECT_DATETIME_ns")
     private Integer COLLECT_DATETIME_ns;
+    @JsonProperty("SOURCE_DATETIME_ns")
     private Integer SOURCE_DATETIME_ns;
+    @JsonProperty("ChangeTimeStamp_ns")
     private Integer ChangeTimeStamp_ns;
+    @JsonProperty("FIX_DATE_st")
     private String FIX_DATE_st;
+    @JsonProperty("FIX_DATE_dt")
     private java.time.LocalDateTime FIX_DATE_dt;
+    @JsonProperty("FIX_DATE_ns")
     private String FIX_DATE_ns;
+    @JsonProperty("TRDPRC_1")
     private Double TRDPRC_1;
+    @JsonProperty("ACVOL_1")
     private Double ACVOL_1;
+    @JsonProperty("VWAP")
     private Double VWAP;
+    @JsonProperty("PRCTCK_1")
     private String PRCTCK_1;
+    @JsonProperty("BLKVOLUM")
     private Long BLKVOLUM;
+    @JsonProperty("TOT_VOLUME")
     private Long TOT_VOLUME;
+    @JsonProperty("VOLUME_ADV")
     private Long VOLUME_ADV;
+    @JsonProperty("VOLUME_DEC")
     private Long VOLUME_DEC;
+    @JsonProperty("VOLUME_UNC")
     private Long VOLUME_UNC;
+    @JsonProperty("ISSUES_ADV")
     private Long ISSUES_ADV;
+    @JsonProperty("ISSUES_DEC")
     private Long ISSUES_DEC;
+    @JsonProperty("ISSUES_UNC")
     private Long ISSUES_UNC;
+    @JsonProperty("NEW_LOWS")
     private Long NEW_LOWS;
+    @JsonProperty("TOT_ISSUES")
     private Long TOT_ISSUES;
+    @JsonProperty("NEW_HIGHS")
     private Long NEW_HIGHS;
+    @JsonProperty("NRG_NTBACK")
     private Double NRG_NTBACK;
+    @JsonProperty("NRG_SWING")
     private Double NRG_SWING;
+    @JsonProperty("CMP_YIELD")
     private Double CMP_YIELD;
+    @JsonProperty("ORDBK_VWAP")
     private Double ORDBK_VWAP;
+    @JsonProperty("NAV")
     private Double NAV;
+    @JsonProperty("EFS_VOL")
     private Long EFS_VOL;
+    @JsonProperty("EFP_VOL")
     private Long EFP_VOL;
+    @JsonProperty("COM_BASIS")
     private Double COM_BASIS;
+    @JsonProperty("FPN")
     private Double FPN;
+    @JsonProperty("MAX_EX_LMT")
     private Long MAX_EX_LMT;
+    @JsonProperty("MAX_IM_LMT")
     private Long MAX_IM_LMT;
+    @JsonProperty("NRG_VAR")
     private Long NRG_VAR;
+    @JsonProperty("QPN")
     private Double QPN;
+    @JsonProperty("REFM_CRACK")
     private Double REFM_CRACK;
+    @JsonProperty("REFM_TOP")
     private Double REFM_TOP;
+    @JsonProperty("SSN_DEMAND")
     private Double SSN_DEMAND;
+    @JsonProperty("OFFER")
     private Double OFFER;
+    @JsonProperty("ECON_ACT")
     private String ECON_ACT;
+    @JsonProperty("AVERG_PRC")
     private Double AVERG_PRC;
+    @JsonProperty("OPINT_1")
     private Long OPINT_1;
+    @JsonProperty("PRD_NUMMOV")
     private Long PRD_NUMMOV;
+    @JsonProperty("TOT_DEMAND")
     private Long TOT_DEMAND;
+    @JsonProperty("PCTCHNG")
     private Double PCTCHNG;
+    @JsonProperty("TRADE_ID")
     private String TRADE_ID;
+    @JsonProperty("QUTA_REM")
     private Double QUTA_REM;
+    @JsonProperty("ODD_PRC")
     private Double ODD_PRC;
+    @JsonProperty("ODD_TRDVOL")
     private Long ODD_TRDVOL;
+    @JsonProperty("ODD_TURN")
     private Double ODD_TURN;
+    @JsonProperty("TOT_BUYVAL")
     private Double TOT_BUYVAL;
+    @JsonProperty("TOT_BUYVOL")
     private Long TOT_BUYVOL;
+    @JsonProperty("TOT_SELVAL")
     private Double TOT_SELVAL;
+    @JsonProperty("TOT_SELVOL")
     private Long TOT_SELVOL;
+    @JsonProperty("TRD_P_CCY")
     private String TRD_P_CCY;
+    @JsonProperty("FLOWS")
     private Double FLOWS;
+    @JsonProperty("TRNOVR_UNS")
     private Double TRNOVR_UNS;
+    @JsonProperty("PRIMACT_1")
     private Double PRIMACT_1;
+    @JsonProperty("TRD_YLD1")
     private Double TRD_YLD1;
+    @JsonProperty("FAIR_VALUE")
     private Double FAIR_VALUE;
+    @JsonProperty("FV_CAL_VOL")
     private Double FV_CAL_VOL;
+    @JsonProperty("IND_AUC")
     private Double IND_AUC;
+    @JsonProperty("IND_AUCVOL")
     private Double IND_AUCVOL;
+    @JsonProperty("SEQ_NO")
     private Long SEQ_NO;
+    @JsonProperty("TRD_RIC")
     private String TRD_RIC;
+    @JsonProperty("MMT_CLASS")
     private String MMT_CLASS;
+    @JsonProperty("INST_DESC")
     private String INST_DESC;
+    @JsonProperty("TR_TRD_FLG")
     private String TR_TRD_FLG;
+    @JsonProperty("AGGRS_SID1")
     private String AGGRS_SID1;
+    @JsonProperty("TRTN_1W")
     private Double TRTN_1W;
+    @JsonProperty("TRTN_1M")
     private Double TRTN_1M;
+    @JsonProperty("TRTN_2Y")
     private Double TRTN_2Y;
+    @JsonProperty("TRTN_3Y")
     private Double TRTN_3Y;
+    @JsonProperty("TRTN_4Y")
     private Double TRTN_4Y;
+    @JsonProperty("TRTN_5Y")
     private Double TRTN_5Y;
+    @JsonProperty("MTD_TRTN")
     private Double MTD_TRTN;
+    @JsonProperty("QTD_TRTN")
     private Double QTD_TRTN;
+    @JsonProperty("TRTN")
     private Double TRTN;
+    @JsonProperty("YR_TRTN")
     private Double YR_TRTN;
+    @JsonProperty("YTD_TRTN")
     private Double YTD_TRTN;
+    @JsonProperty("TRTN_3MT")
     private Double TRTN_3MT;
+    @JsonProperty("O_TRDPRC")
     private Double O_TRDPRC;
+    @JsonProperty("O_TRDVOL")
     private Double O_TRDVOL;
+    @JsonProperty("ACVOL_UNS")
     private Double ACVOL_UNS;
+    @JsonProperty("ECON_FCAST")
     private Double ECON_FCAST;
+    @JsonProperty("ECON_PRIOR")
     private Double ECON_PRIOR;
+    @JsonProperty("ECON_REV")
     private Double ECON_REV;
+    @JsonProperty("FCAST_NUM")
     private Double FCAST_NUM;
+    @JsonProperty("MKT_CHNG")
     private Double MKT_CHNG;
+    @JsonProperty("MKT_STRN")
     private Double MKT_STRN;
+    @JsonProperty("MKT_VOLT")
     private Double MKT_VOLT;
+    @JsonProperty("MKT_WEAK")
     private Double MKT_WEAK;
+    @JsonProperty("MOVES_ADV")
     private Long MOVES_ADV;
+    @JsonProperty("MOVES_DEC")
     private Long MOVES_DEC;
+    @JsonProperty("MOVES_UNC")
     private Long MOVES_UNC;
+    @JsonProperty("PERATIO")
     private Double PERATIO;
+    @JsonProperty("TOT_MOVES")
     private Long TOT_MOVES;
+    @JsonProperty("FVMA_1MM")
     private Double FVMA_1MM;
+    @JsonProperty("FVMA_3MM")
     private Double FVMA_3MM;
+    @JsonProperty("FVMA_5MM")
     private Double FVMA_5MM;
+    @JsonProperty("FVMA_10MM")
     private Double FVMA_10MM;
+    @JsonProperty("FVMA_20MM")
     private Double FVMA_20MM;
+    @JsonProperty("FVMA_30MM")
     private Double FVMA_30MM;
+    @JsonProperty("FVMA_40MM")
     private Double FVMA_40MM;
+    @JsonProperty("FVMA_50MM")
     private Double FVMA_50MM;
+    @JsonProperty("FVMA_60MM")
     private Double FVMA_60MM;
+    @JsonProperty("FVMA_70MM")
     private Double FVMA_70MM;
+    @JsonProperty("FVMA_80MM")
     private Double FVMA_80MM;
+    @JsonProperty("FVMA_90MM")
     private Double FVMA_90MM;
+    @JsonProperty("FVMA_100M")
     private Double FVMA_100M;
+    @JsonProperty("FVAC_1MM")
     private Double FVAC_1MM;
+    @JsonProperty("FVAC_3MM")
     private Double FVAC_3MM;
+    @JsonProperty("FVAC_5MM")
     private Double FVAC_5MM;
+    @JsonProperty("FVAC_10MM")
     private Double FVAC_10MM;
+    @JsonProperty("FVAC_20MM")
     private Double FVAC_20MM;
+    @JsonProperty("FVAC_30MM")
     private Double FVAC_30MM;
+    @JsonProperty("FVAC_40MM")
     private Double FVAC_40MM;
+    @JsonProperty("FVAC_50MM")
     private Double FVAC_50MM;
+    @JsonProperty("FVAC_60MM")
     private Double FVAC_60MM;
+    @JsonProperty("FVAC_70MM")
     private Double FVAC_70MM;
+    @JsonProperty("FVAC_80MM")
     private Double FVAC_80MM;
+    @JsonProperty("FVAC_90MM")
     private Double FVAC_90MM;
+    @JsonProperty("FVAC_100M")
     private Double FVAC_100M;
+    @JsonProperty("RPT_BS_CCY")
     private String RPT_BS_CCY;
+    @JsonProperty("RPT_P_METH")
     private String RPT_P_METH;
+    @JsonProperty("LTNOV_UNS")
     private Double LTNOV_UNS;
+    @JsonProperty("TRD_ASP1M")
     private Double TRD_ASP1M;
+    @JsonProperty("TRD_ASP3M")
     private Double TRD_ASP3M;
+    @JsonProperty("TRD_ASP6M")
     private Double TRD_ASP6M;
+    @JsonProperty("TRD_ASP")
     private Double TRD_ASP;
+    @JsonProperty("TRD_BPV")
     private Double TRD_BPV;
+    @JsonProperty("TRD_BVNINF")
     private Double TRD_BVNINF;
+    @JsonProperty("TRD_CLN_PR")
     private Double TRD_CLN_PR;
+    @JsonProperty("TRD_CMPYLD")
     private Double TRD_CMPYLD;
+    @JsonProperty("TRD_CNVXTY")
     private Double TRD_CNVXTY;
+    @JsonProperty("TRD_ISMAYL")
     private Double TRD_ISMAYL;
+    @JsonProperty("TRD_OAS")
     private Double TRD_OAS;
+    @JsonProperty("TRD_SWP_SP")
     private Double TRD_SWP_SP;
+    @JsonProperty("TRD_DSCMRG")
     private Double TRD_DSCMRG;
+    @JsonProperty("MFD_TRANTP")
     private String MFD_TRANTP;
+    @JsonProperty("MFD_NGOTRD")
     private String MFD_NGOTRD;
+    @JsonProperty("MFD_AGENCY")
     private String MFD_AGENCY;
+    @JsonProperty("MFD_MODTRD")
     private String MFD_MODTRD;
+    @JsonProperty("MFD_REFTRD")
     private String MFD_REFTRD;
+    @JsonProperty("MFD_SP_DIV")
     private String MFD_SP_DIV;
+    @JsonProperty("MFD_FRMTRD")
     private String MFD_FRMTRD;
+    @JsonProperty("MFD_ALGTRD")
     private String MFD_ALGTRD;
+    @JsonProperty("MFD_DEFRSN")
     private String MFD_DEFRSN;
+    @JsonProperty("MFD_DEFTYP")
     private String MFD_DEFTYP;
+    @JsonProperty("MFD_DUPTRD")
     private String MFD_DUPTRD;
+    @JsonProperty("TRDVOL_ALT")
     private Double TRDVOL_ALT;
+    @JsonProperty("TRD_BMKSPD")
     private Double TRD_BMKSPD;
+    @JsonProperty("TRD_CDS_BS")
     private Double TRD_CDS_BS;
+    @JsonProperty("TRD_SIMMGN")
     private Double TRD_SIMMGN;
+    @JsonProperty("TRD_ZSPRD")
     private Double TRD_ZSPRD;
+    @JsonProperty("TRD_YTB")
     private Double TRD_YTB;
+    @JsonProperty("TRD_YTM")
     private Double TRD_YTM;
+    @JsonProperty("TRD_BNDFLR")
     private Double TRD_BNDFLR;
+    @JsonProperty("TRD_YTC")
     private Double TRD_YTC;
+    @JsonProperty("TRD_YTP")
     private Double TRD_YTP;
+    @JsonProperty("TRD_YTW")
     private Double TRD_YTW;
+    @JsonProperty("TRD_MODDUR")
     private Double TRD_MODDUR;
+    @JsonProperty("TRD_PREM")
     private Double TRD_PREM;
+    @JsonProperty("AGGR_PRC")
     private Double AGGR_PRC;
+    @JsonProperty("AGGR_VOL")
     private Double AGGR_VOL;
+    @JsonProperty("AGGR_CNT")
     private Integer AGGR_CNT;
+    @JsonProperty("SUM_ACTION_6")
     private String SUM_ACTION_6;
+    @JsonProperty("SUM_ACTION_7")
     private String SUM_ACTION_7;
+    @JsonProperty("SUM_ACTION_8")
     private String SUM_ACTION_8;
+ 
 
     public String getDocType() {
         return docType;
