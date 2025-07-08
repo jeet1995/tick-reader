@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
 
 /**
  * Implementation of TicksService that provides high-performance tick data retrieval from Cosmos DB.
- * 
+ *
  * This implementation uses:
  * - Asynchronous processing with CompletableFuture for non-blocking operations
  * - Parallel execution across multiple RICs and Cosmos DB containers
@@ -47,7 +47,7 @@ import java.util.stream.Collectors;
  * - Date-based container partitioning for efficient data access
  * - Continuation token-based pagination for large result sets
  * - Thread pool management for controlled concurrency
- * 
+ *
  * Data Model:
  * - RIC -> CosmosDbAccount -> Database -> Container (daily granularity)
  * - Partition Key Format: <RIC>|yyyy-MM-dd|<shardId>
@@ -62,22 +62,22 @@ public class TickServiceImpl implements TicksService {
 
     /** Factory for creating Cosmos DB clients based on RIC */
     private final RicBasedCosmosClientFactory clientFactory;
-    
+
     /** Configuration for Cosmos DB accounts and containers */
     private final CosmosDbAccountConfiguration cosmosDbAccountConfiguration;
-    
+
     /** Thread pool for executing concurrent queries */
     private final ExecutorService queryExecutorService;
-    
+
     /** Concurrency level: CPU count * 10 for optimal performance */
     private final int concurrency = Configs.getCPUCnt() * 10;
-    
+
     /** Object mapper configured to exclude null values */
     private final ObjectMapper nonNullObjectMapper = new ObjectMapper();
 
     /**
      * Constructor for TickServiceImpl.
-     * 
+     *
      * @param clientFactory Factory for creating Cosmos DB clients
      * @param cosmosDbAccountConfiguration Configuration for Cosmos DB accounts
      */
@@ -85,7 +85,7 @@ public class TickServiceImpl implements TicksService {
                            CosmosDbAccountConfiguration cosmosDbAccountConfiguration) {
         this.clientFactory = clientFactory;
         this.cosmosDbAccountConfiguration = cosmosDbAccountConfiguration;
-        
+
         // Initialize thread pool with concurrency level based on CPU count
         this.queryExecutorService = Executors.newFixedThreadPool(concurrency);
 
@@ -95,10 +95,10 @@ public class TickServiceImpl implements TicksService {
 
     /**
      * Retrieves tick data for specified RICs within a time range.
-     * 
+     *
      * This method provides a synchronous interface that wraps the asynchronous implementation.
      * It handles parameter validation, executes the query asynchronously, and returns the results.
-     * 
+     *
      * @param rics List of RIC (Reuters Instrument Code) identifiers to query
      * @param docTypes List of document types to filter by
      * @param totalTicks Maximum number of ticks to return per RIC
@@ -108,10 +108,8 @@ public class TickServiceImpl implements TicksService {
      * @param includeNullValues If true, includes null values in response; if false, filters them out
      * @param pageSize Number of items per page for pagination
      * @param includeDiagnostics If true, includes Cosmos DB diagnostics in response
-     * @param projections List of field names to include in the SELECT clause. If null or empty, selects all fields (SELECT *)
      * @return TickResponse containing the retrieved tick data and execution metrics
      * @throws RuntimeException if the query execution fails
-     * @throws IllegalArgumentException if projections validation fails
      */
     @Override
     public TickResponse getTicks(
@@ -123,15 +121,11 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime endTime,
             boolean includeNullValues,
             int pageSize,
-            boolean includeDiagnostics,
-            List<String> projections) {
-        
-        // Validate projections parameter
-        validateProjections(projections);
+            boolean includeDiagnostics) {
         
         try {
             // Execute the asynchronous query and wait for completion
-            return getTicksAsync(rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues, pageSize, includeDiagnostics, projections).get();
+            return getTicksAsync(rics, docTypes, totalTicks, pinStart, startTime, endTime, includeNullValues, pageSize, includeDiagnostics).get();
         } catch (InterruptedException | ExecutionException e) {
             logger.error("Error executing getTicks: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to get ticks", e);
@@ -140,19 +134,19 @@ public class TickServiceImpl implements TicksService {
 
     /**
      * Asynchronous implementation of tick data retrieval.
-     * 
+     *
      * This method orchestrates the entire tick retrieval process:
      * 1. Normalizes the time range (swaps start/end if needed)
      * 2. Builds execution contexts for each RIC across date ranges
      * 3. Executes parallel queries across multiple Cosmos DB containers
      * 4. Aggregates and returns the results
-     * 
+     *
      * Data Model Example:
      * - Time Range: 2024-10-01T00:00:00 to 2024-10-05T23:59:59
      * - RIC: AAPL
      * - Partition Key Format: <RIC>|yyyy-MM-dd|<shardId>
      * - Containers: AAPL|2024-10-01|1-8, AAPL|2024-10-02|1-8, ..., AAPL|2024-10-05|1-8
-     * 
+     *
      * @param rics List of RIC identifiers to query
      * @param docTypes List of document types to filter by
      * @param totalTicks Maximum number of ticks to return per RIC
@@ -162,7 +156,6 @@ public class TickServiceImpl implements TicksService {
      * @param includeNullValues Whether to include null values
      * @param pageSize Page size for pagination
      * @param includeDiagnostics Whether to include diagnostics
-     * @param projections List of field names to include in the SELECT clause. If null or empty, selects all fields (SELECT *)
      * @return CompletableFuture containing the TickResponse
      */
     private CompletableFuture<TickResponse> getTicksAsync(
@@ -174,8 +167,7 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime endTime,
             boolean includeNullValues,
             int pageSize,
-            boolean includeDiagnostics,
-            List<String> projections) {
+            boolean includeDiagnostics) {
 
         return CompletableFuture.supplyAsync(() -> {
             // Normalize time range - ensure startTime <= endTime
@@ -183,9 +175,9 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime newEndTime = endTime.isBefore(startTime) ? startTime : endTime;
 
             // Build execution contexts for each RIC across date ranges
-            Map<String, RicQueryExecutionState> ricToRicQueryExecutionState = 
+            Map<String, RicQueryExecutionState> ricToRicQueryExecutionState =
                 buildTickRequestContexts(rics, newStartTime, newEndTime, pinStart);
-            
+
             // Generate correlation ID for request tracking
             String correlationId = UUID.randomUUID().toString();
 
@@ -201,20 +193,19 @@ public class TickServiceImpl implements TicksService {
                     includeNullValues,
                     pinStart,
                     pageSize,
-                    includeDiagnostics,
-                    projections);
+                    includeDiagnostics);
         }, queryExecutorService);
     }
 
     /**
      * Builds execution contexts for each RIC across multiple date ranges and Cosmos DB containers.
-     * 
+     *
      * This method:
      * 1. Uses Murmur3 hashing to distribute RICs across Cosmos DB accounts
      * 2. Generates date ranges between start and end times
      * 3. Creates execution contexts for each RIC+date combination
      * 4. Maps contexts to appropriate Cosmos DB containers
-     * 
+     *
      * @param rics List of RIC identifiers
      * @param startTime Start of time range
      * @param endTime End of time range
@@ -292,14 +283,14 @@ public class TickServiceImpl implements TicksService {
 
     /**
      * Executes parallel queries across multiple Cosmos DB containers and aggregates results.
-     * 
+     *
      * This method orchestrates the parallel execution of queries:
      * 1. Creates concurrent tasks for each RIC execution state
      * 2. Fetches data pages until all queries are completed
      * 3. Aggregates results from all RICs
      * 4. Applies sorting and null value filtering
      * 5. Returns final response with execution metrics
-     * 
+     *
      * @param rics List of RIC identifiers
      * @param ricToRicQueryExecutionState Map of RIC to execution state
      * @param docTypes List of document types to filter by
@@ -311,7 +302,6 @@ public class TickServiceImpl implements TicksService {
      * @param pinStart Sorting order flag
      * @param pageSize Page size for pagination
      * @param includeDiagnostics Whether to include diagnostics
-     * @param projections List of field names to include in the SELECT clause. If null or empty, selects all fields (SELECT *)
      * @return TickResponse with aggregated results and execution metrics
      */
     private TickResponse executeQueryWithTopNSorted(
@@ -325,8 +315,7 @@ public class TickServiceImpl implements TicksService {
             boolean includeNullValues,
             boolean pinStart,
             int pageSize,
-            boolean includeDiagnostics,
-            List<String> projections) {
+            boolean includeDiagnostics) {
 
         // Record execution start time for performance tracking
         Instant executionStartTime = Instant.now();
@@ -344,7 +333,7 @@ public class TickServiceImpl implements TicksService {
                 // Create concurrent tasks for each RIC execution state
                 List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
                         .map(ricQueryExecutionState -> CompletableFuture.runAsync(() ->
-                                        fetchNextPage(ricQueryExecutionState, docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections),
+                                        fetchNextPage(ricQueryExecutionState, docTypes, startTime, endTime, pageSize, pinStart, totalTicks),
                                 queryExecutorService))
                         .collect(Collectors.toList());
 
@@ -381,10 +370,7 @@ public class TickServiceImpl implements TicksService {
                 }
             }
 
-            // Apply sorting based on pinStart flag
-            if (pinStart) {
-                Collections.reverse(ticks);
-            }
+            Collections.sort(ticks, (t1, t2) -> t2.getMessageTimestamp().compareTo(t1.getMessageTimestamp()));
 
             resultTicks.addAll(ticks);
         }
@@ -413,14 +399,14 @@ public class TickServiceImpl implements TicksService {
 
     /**
      * Fetches a single page of data from a specific Cosmos DB container.
-     * 
+     *
      * This method:
      * 1. Selects the next available execution context
      * 2. Builds or retrieves the SQL query specification
      * 3. Executes the query with pagination support
      * 4. Processes the response and updates execution state
      * 5. Handles Cosmos DB exceptions gracefully
-     * 
+     *
      * @param ricQueryExecutionState Execution state for a specific RIC
      * @param docTypes List of document types to filter by
      * @param startTime Start of time range
@@ -428,7 +414,6 @@ public class TickServiceImpl implements TicksService {
      * @param pageSize Number of items per page
      * @param pinStart Sorting order flag
      * @param totalTicks Maximum number of ticks to return
-     * @param projections List of field names to include in the SELECT clause. If null or empty, selects all fields (SELECT *)
      */
     private void fetchNextPage(
             RicQueryExecutionState ricQueryExecutionState,
@@ -437,8 +422,7 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime endTime,
             int pageSize,
             boolean pinStart,
-            int totalTicks,
-            List<String> projections) {
+            int totalTicks) {
 
         // Step 1: Get next available execution context
         TickRequestContextPerPartitionKey tickRequestContext
@@ -455,8 +439,8 @@ public class TickServiceImpl implements TicksService {
         CosmosQueryRequestOptions queryRequestOptions = new CosmosQueryRequestOptions();
 
         // Step 3: Build or retrieve SQL query specification
-        SqlQuerySpec querySpec = tickRequestContext.getSqlQuerySpec() != null ? 
-            tickRequestContext.getSqlQuerySpec() : 
+        SqlQuerySpec querySpec = tickRequestContext.getSqlQuerySpec() != null ?
+            tickRequestContext.getSqlQuerySpec() :
             getSqlQuerySpec(
                 tickRequestContext.getTickIdentifier(),
                 docTypes,
@@ -465,8 +449,7 @@ public class TickServiceImpl implements TicksService {
                 tickRequestContext.getRequestDateAsString(),
                 tickRequestContext.getDateFormat(),
                 pinStart,
-                totalTicks,
-                projections);
+                totalTicks);
 
         tickRequestContext.setSqlQuerySpec(querySpec);
 
@@ -507,7 +490,7 @@ public class TickServiceImpl implements TicksService {
             if (response != null) {
                 // Update continuation token for next page
                 tickRequestContext.setContinuationToken(response.getContinuationToken() != null ? response.getContinuationToken() : "drained");
-                
+
                 // Collect diagnostics information
                 tickRequestContext.addCosmosDiagnostics(response.getCosmosDiagnostics());
 
@@ -524,24 +507,23 @@ public class TickServiceImpl implements TicksService {
 
     /**
      * Builds parameterized SQL query specification for Cosmos DB.
-     * 
+     *
      * This method constructs a parameterized SQL query with:
      * - Partition key filtering across multiple shards
      * - Document type filtering
      * - Time range filtering with nanosecond precision
      * - Sorting based on message timestamp
      * - Result limiting
-     * - Field projection (optional)
-     * 
+     *
      * Query Structure:
-     * SELECT [projections] FROM C 
-     * WHERE C.pk IN (@pk1, @pk2, ..., @pk8) 
-     *   AND C.docType IN (@docType0, @docType1, ...) 
-     *   AND C.messageTimestamp >= @startTime 
-     *   AND C.messageTimestamp < @endTime 
-     * ORDER BY C.messageTimestamp [ASC|DESC] 
+     * SELECT * FROM C
+     * WHERE C.pk IN (@pk1, @pk2, ..., @pk8)
+     *   AND C.docType IN (@docType0, @docType1, ...)
+     *   AND C.messageTimestamp >= @startTime
+     *   AND C.messageTimestamp < @endTime
+     * ORDER BY C.messageTimestamp [ASC|DESC]
      * OFFSET 0 LIMIT @totalTicks
-     * 
+     *
      * @param tickIdentifier Base identifier for the tick (RIC|date)
      * @param docTypes List of document types to filter by
      * @param startTime Start of time range
@@ -550,7 +532,6 @@ public class TickServiceImpl implements TicksService {
      * @param format Date format pattern
      * @param pinStart If true, sort ascending; if false, sort descending
      * @param totalTicks Maximum number of ticks to return
-     * @param projections List of field names to include in the SELECT clause. If null or empty, selects all fields (SELECT *)
      * @return SqlQuerySpec with parameterized query and parameters
      */
     private SqlQuerySpec getSqlQuerySpec(
@@ -561,20 +542,19 @@ public class TickServiceImpl implements TicksService {
             String localDateAsString,
             String format,
             boolean pinStart,
-            int totalTicks,
-            List<String> projections) {
+            int totalTicks) {
 
         // Parse the date string to get container-specific date bounds
         LocalDate localDate = LocalDate.parse(localDateAsString, DateTimeFormatter.ofPattern(format));
 
         // Calculate query time bounds with nanosecond precision
         // Use container date bounds if query time range extends beyond them
-        long queryStartTime = !startTime.isBefore(localDate.atStartOfDay()) ? 
-            startTime.toInstant(ZoneOffset.UTC).toEpochMilli() * 1_000_000L : 
+        long queryStartTime = !startTime.isBefore(localDate.atStartOfDay()) ?
+            startTime.toInstant(ZoneOffset.UTC).toEpochMilli() * 1_000_000L :
             localDate.atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli() * 1_000_000L;
-        
-        long queryEndTime = !endTime.isAfter(localDate.atTime(23, 59, 59, 999_999_999)) ? 
-            endTime.toInstant(ZoneOffset.UTC).toEpochMilli() * 1_000_000L : 
+
+        long queryEndTime = !endTime.isAfter(localDate.atTime(23, 59, 59, 999_999_999)) ?
+            endTime.toInstant(ZoneOffset.UTC).toEpochMilli() * 1_000_000L :
             localDate.atTime(23, 59, 59, 999_999_999).toInstant(ZoneOffset.UTC).toEpochMilli() * 1_000_000L;
 
         // Initialize parameter list
@@ -614,67 +594,17 @@ public class TickServiceImpl implements TicksService {
         }
         partitionKeyPlaceholders.append(")");
 
-        // Build SELECT clause with projections
-        String selectClause;
-        if (projections != null && !projections.isEmpty()) {
-            // Use specified projections
-            selectClause = "SELECT " + String.join(", ", projections.stream()
-                    .map(field -> "C." + field)
-                    .collect(Collectors.toList())) + " FROM C";
-        } else {
-            // Select all fields
-            selectClause = "SELECT * FROM C";
-        }
-
         // Build final query with appropriate sorting
         if (pinStart) {
             // Ascending order for pinStart=true
-            String query = selectClause + " WHERE C.pk IN " + partitionKeyPlaceholders + 
-                          " AND C.docType IN " + docTypePlaceholders +
-                          " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime " +
-                          "ORDER BY C.messageTimestamp ASC OFFSET 0 LIMIT " + totalTicks;
+            String query = "SELECT * FROM C WHERE C.pk IN " + partitionKeyPlaceholders + " AND C.docType IN " + docTypePlaceholders +
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp ASC OFFSET 0 LIMIT " + totalTicks;
 
             return new SqlQuerySpec(query, parameters);
         } else {
-            // Descending order for pinStart=false
-            String query = selectClause + " WHERE C.pk IN " + partitionKeyPlaceholders + 
-                          " AND C.docType IN " + docTypePlaceholders +
-                          " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime " +
-                          "ORDER BY C.messageTimestamp DESC OFFSET 0 LIMIT " + totalTicks;
-
+            String query = "SELECT * FROM C WHERE C.pk IN " + partitionKeyPlaceholders + " AND C.docType IN " + docTypePlaceholders +
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp DESC OFFSET 0 LIMIT " + totalTicks;
             return new SqlQuerySpec(query, parameters);
         }
-    }
-
-    /**
-     * Validates the projections parameter to ensure it meets the required criteria.
-     * 
-     * Validation Rules:
-     * 1. If projections list is provided (not null), it cannot be empty
-     * 2. If projections list is provided, it must include 'messageTimestamp' field
-     *    (required for sorting functionality)
-     * 
-     * @param projections List of field names to validate
-     * @throws IllegalArgumentException if validation fails
-     */
-    private void validateProjections(List<String> projections) {
-        // If projections is null, it's valid (will use SELECT *)
-        if (projections == null) {
-            return;
-        }
-        
-        // Rule 1: If projections list is provided, it cannot be empty
-        if (projections.isEmpty()) {
-            logger.error("Projections list cannot be empty. Either provide valid field names or omit the parameter to select all fields.");
-            throw new IllegalArgumentException("Projections list cannot be empty. Either provide valid field names or omit the parameter to select all fields.");
-        }
-        
-        // Rule 2: If projections list is provided, it must include 'messageTimestamp'
-        if (!projections.contains("messageTimestamp")) {
-            logger.error("Projections list must include 'messageTimestamp' field for sorting functionality. Provided projections: {}", projections);
-            throw new IllegalArgumentException("Projections list must include 'messageTimestamp' field for sorting functionality. Provided projections: " + projections);
-        }
-        
-        logger.debug("Projections validation passed. Valid projections: {}", projections);
     }
 }
