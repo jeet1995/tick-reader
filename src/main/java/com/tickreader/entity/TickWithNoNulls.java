@@ -452,6 +452,16 @@ public class TickWithNoNulls extends BaseTick {
     private String SUM_ACTION_7;
     private String SUM_ACTION_8;
 
+    public String getDocType() {
+        return docType;
+    }
+
+    public void setDocType(String docType) {
+        this.docType = docType;
+    }
+
+    private String docType;
+
     public String getRicName() {
         return ricName;
     }

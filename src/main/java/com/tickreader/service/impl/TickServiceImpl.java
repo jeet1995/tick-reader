@@ -245,10 +245,7 @@ public class TickServiceImpl implements TicksService {
                 }
             }
 
-            if (pinStart) {
-                Collections.reverse(ticks);
-            }
-
+            Collections.sort(ticks, (t1, t2) -> Math.toIntExact(t2.getMessageTimestamp() - t1.getMessageTimestamp()));
             resultTicks.addAll(ticks);
         }
 
@@ -401,12 +398,12 @@ public class TickServiceImpl implements TicksService {
 
         if (pinStart) {
             String query = "SELECT * FROM C WHERE C.pk IN " + partitionKeyPlaceholders + " AND C.docType IN " + docTypePlaceholders +
-                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.messageTimestamp ASC OFFSET 0 LIMIT " + totalTicks;
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp ASC OFFSET 0 LIMIT " + totalTicks;
 
             return new SqlQuerySpec(query, parameters);
         } else {
             String query = "SELECT * FROM C WHERE C.pk IN " + partitionKeyPlaceholders + " AND C.docType IN " + docTypePlaceholders +
-                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.messageTimestamp DESC OFFSET 0 LIMIT " + totalTicks;
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp DESC OFFSET 0 LIMIT " + totalTicks;
 
             return new SqlQuerySpec(query, parameters);
         }
