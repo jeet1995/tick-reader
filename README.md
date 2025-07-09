@@ -169,7 +169,7 @@ GET /ticks/sort=messageTimestamp?rics=MSFT,AAPL,GOOGL&docTypes=TAS&totalTicks=10
 
 **Example Request:**
 ```http
-GET /ticks/with-range-filters?rics=MSFT,AAPL&docTypes=TAS&totalTicks=5000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&trdprc1Min=100.0&trdprc1Max=200.0&trnovrUnsMin=1000000.0&projections=TRDPRC_1,TRNOVR_UNS
+GET http://localhost:8080/ticks/with-range-filters?rics=MSFT,AAPL,EUR=,NFLX,NVDA,GOOGL,AMZN,TSLA,META,BRK.A&docTypes=TAS,TAQ&totalTicks=50&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&trdprc1Min=100.0&trdprc1Max=20000.0&trnovrUnsMin=500.0&trnovrUnsMax=50010.0&projections=TRDPRC_1,TRNOVR_UNS
 ```
 
 ### 3. Tick Query with Price-Volume Filters
@@ -208,7 +208,7 @@ GET /ticks/with-price-volume-filters?rics=MSFT,AAPL&docTypes=TAS&totalTicks=5000
 
 **Example Request:**
 ```http
-GET /ticks/with-qualifiers-filters?rics=MSFT,AAPL&docTypes=TAS&totalTicks=5000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&containsFilters=ACTIVE,LIQUID&notContainsFilters=HALTED&projections=qualifiers,TRDPRC_1
+GET /ticks/with-qualifiers-filters?rics=MSFT,AAPL&docTypes=TAS&totalTicks=5000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&containsFilters=ASK_TONE&notContainsFilters=IT&projections=qualifiers,TRDPRC_1
 ```
 
 ## Response Format
