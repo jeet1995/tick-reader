@@ -1,1 +1,1 @@
-GET http://localhost:8080/ticks/sort=messageTimestamp?rics=MSFT,AAPL,GOOGL,EUR=,BRK.A,TSLA,META,AMZN&docTypes=TAS&totalTicks=10&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&pageSize=150&includeNullValues=false
+GET http://localhost:8080/ticks/sort=messageTimestamp?rics=MSFT,AAPL,GOOGL,EUR=,BRK.A,TSLA,META,AMZN&docTypes=TAS&totalTicks=10&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&pageSize=150&includeNullValues=false&projections=docType
