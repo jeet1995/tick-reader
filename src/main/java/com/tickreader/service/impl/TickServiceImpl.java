@@ -1593,7 +1593,6 @@ public class TickServiceImpl implements TicksService {
      *   AND C.messageTimestamp >= @startTime
      *   AND C.messageTimestamp < @endTime
      * ORDER BY C.messageTimestamp [ASC|DESC]
-     * OFFSET 0 LIMIT @totalTicks
      *
      * @param tickIdentifier Base identifier for the tick (RIC|date)
      * @param docTypes List of document types to filter by
@@ -1673,12 +1672,12 @@ public class TickServiceImpl implements TicksService {
         if (pinStart) {
             // Ascending order for pinStart=true
             String query = "SELECT " + selectClause + " FROM C WHERE C.pk IN " + partitionKeyPlaceholders + " AND C.docType IN " + docTypePlaceholders +
-                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp ASC OFFSET 0 LIMIT " + totalTicks;
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp ASC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
             String query = "SELECT " + selectClause + " FROM C WHERE C.pk IN " + partitionKeyPlaceholders + " AND C.docType IN " + docTypePlaceholders +
-                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp DESC OFFSET 0 LIMIT " + totalTicks;
+                    " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp DESC";
             return new SqlQuerySpec(query, parameters);
         }
     }
@@ -1703,7 +1702,6 @@ public class TickServiceImpl implements TicksService {
      *   AND C.TRDPRC_1 >= @trdprc1Min AND C.TRDPRC_1 <= @trdprc1Max
      *   AND C.TRNOVR_UNS >= @trnovrUnsMin AND C.TRNOVR_UNS <= @trnovrUnsMax
      * ORDER BY C.messageTimestamp [ASC|DESC]
-     * OFFSET 0 LIMIT @totalTicks
      *
      * @param tickIdentifier Base identifier for the tick (RIC|date)
      * @param docTypes List of document types to filter by
@@ -1817,16 +1815,16 @@ public class TickServiceImpl implements TicksService {
             String query = "SELECT " + selectClause + " FROM C WHERE C.pk IN " + partitionKeyPlaceholders + 
                     " AND C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime" +
-                    rangeFilters.toString() +
-                    " ORDER BY C.pk ASC, C.messageTimestamp ASC OFFSET 0 LIMIT " + totalTicks;
+                    rangeFilters +
+                    " ORDER BY C.pk ASC, C.messageTimestamp ASC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
             String query = "SELECT " + selectClause + " FROM C WHERE C.pk IN " + partitionKeyPlaceholders + 
                     " AND C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime" +
-                    rangeFilters.toString() +
-                    " ORDER BY C.pk ASC, C.messageTimestamp DESC OFFSET 0 LIMIT " + totalTicks;
+                    rangeFilters +
+                    " ORDER BY C.pk ASC, C.messageTimestamp DESC";
             return new SqlQuerySpec(query, parameters);
         }
     }
@@ -1851,7 +1849,6 @@ public class TickServiceImpl implements TicksService {
      *   AND C.TRDPRC_1 >= @trdprc1Min AND C.TRDPRC_1 <= @trdprc1Max
      *   AND C.TRDVOL_1 >= @trdvol1Min
      * ORDER BY C.messageTimestamp [ASC|DESC]
-     * OFFSET 0 LIMIT @totalTicks
      *
      * @param tickIdentifier Base identifier for the tick (RIC|date)
      * @param docTypes List of document types to filter by
@@ -1959,16 +1956,16 @@ public class TickServiceImpl implements TicksService {
             String query = "SELECT " + selectClause + " FROM C WHERE C.pk IN " + partitionKeyPlaceholders + 
                     " AND C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime" +
-                    rangeFilters.toString() +
-                    " ORDER BY C.pk ASC, C.messageTimestamp ASC OFFSET 0 LIMIT " + totalTicks;
+                    rangeFilters +
+                    " ORDER BY C.pk ASC, C.messageTimestamp ASC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
             String query = "SELECT " + selectClause + " FROM C WHERE C.pk IN " + partitionKeyPlaceholders + 
                     " AND C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime" +
-                    rangeFilters.toString() +
-                    " ORDER BY C.pk ASC, C.messageTimestamp DESC OFFSET 0 LIMIT " + totalTicks;
+                    rangeFilters +
+                    " ORDER BY C.pk ASC, C.messageTimestamp DESC";
             return new SqlQuerySpec(query, parameters);
         }
     }
@@ -1995,7 +1992,6 @@ public class TickServiceImpl implements TicksService {
      *   AND STARTSWITH(C.qualifiers, @startsWith0) AND STARTSWITH(C.qualifiers, @startsWith1) ...
      *   AND NOT STARTSWITH(C.qualifiers, @notStartsWith0) AND NOT STARTSWITH(C.qualifiers, @notStartsWith1) ...
      * ORDER BY C.messageTimestamp [ASC|DESC]
-     * OFFSET 0 LIMIT @totalTicks
      *
      * @param tickIdentifier Base identifier for the tick (RIC|date)
      * @param docTypes List of document types to filter by
@@ -2125,16 +2121,16 @@ public class TickServiceImpl implements TicksService {
             String query = "SELECT " + selectClause + " FROM C WHERE C.pk IN " + partitionKeyPlaceholders + 
                     " AND C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime" +
-                    stringFilters.toString() +
-                    " ORDER BY C.pk ASC, C.messageTimestamp ASC OFFSET 0 LIMIT " + totalTicks;
+                    stringFilters +
+                    " ORDER BY C.pk ASC, C.messageTimestamp ASC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
             String query = "SELECT " + selectClause + " FROM C WHERE C.pk IN " + partitionKeyPlaceholders + 
                     " AND C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime" +
-                    stringFilters.toString() +
-                    " ORDER BY C.pk ASC, C.messageTimestamp DESC OFFSET 0 LIMIT " + totalTicks;
+                    stringFilters +
+                    " ORDER BY C.pk ASC, C.messageTimestamp DESC";
             return new SqlQuerySpec(query, parameters);
         }
     }

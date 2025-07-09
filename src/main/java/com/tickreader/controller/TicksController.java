@@ -67,10 +67,10 @@ public class TicksController {
             @RequestParam(required = false, defaultValue = "100") int pageSize,
             @RequestParam(required = false, defaultValue = "false") boolean includeDiagnostics,
             @RequestParam(required = false) List<String> projections,
-            Double trdprc1Min,
-            Double trdprc1Max,
-            Double trnovrUnsMin,
-            Double trnovrUnsMax) {
+            @RequestParam Double trdprc1Min,
+            @RequestParam Double trdprc1Max,
+            @RequestParam Double trnovrUnsMin,
+            @RequestParam Double trnovrUnsMax) {
 
         try {
             TickResponse tickResponse = ticksService.getTicksWithRangeFilters(
@@ -105,9 +105,9 @@ public class TicksController {
             @RequestParam(required = false, defaultValue = "100") int pageSize,
             @RequestParam(required = false, defaultValue = "false") boolean includeDiagnostics,
             @RequestParam(required = false) List<String> projections,
-            Double trdprc1Min,
-            Double trdprc1Max,
-            Double trdvol1Min) {
+            @RequestParam Double trdprc1Min,
+            @RequestParam Double trdprc1Max,
+            @RequestParam Double trdvol1Min) {
 
         try {
             TickResponse tickResponse = ticksService.getTicksWithPriceVolumeFilters(
@@ -142,10 +142,10 @@ public class TicksController {
             @RequestParam(required = false, defaultValue = "100") int pageSize,
             @RequestParam(required = false, defaultValue = "false") boolean includeDiagnostics,
             @RequestParam(required = false) List<String> projections,
-            List<String> containsFilters,
-            List<String> notContainsFilters,
-            List<String> startsWithFilters,
-            List<String> notStartsWithFilters) {
+            @RequestParam(required = false) List<String> containsFilters,
+            @RequestParam(required = false) List<String> notContainsFilters,
+            @RequestParam(required = false) List<String> startsWithFilters,
+            @RequestParam(required = false) List<String> notStartsWithFilters) {
 
         try {
             TickResponse tickResponse = ticksService.getTicksWithQualifiersFilters(
