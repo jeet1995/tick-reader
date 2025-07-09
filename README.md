@@ -81,22 +81,12 @@ ticks:
   "compositeIndexes": [
     [
       {
-        "path": "/messageTimestamp",
-        "order": "descending"
-      },
-      {
-        "path": "/recordkey",
-        "order": "descending"
-      }
-    ],
-    [
-      {
-        "path": "/messageTimestamp",
+        "path": "/pk",
         "order": "ascending"
       },
       {
-        "path": "/recordkey",
-        "order": "ascending"
+        "path": "/messageTimestamp",
+        "order": "descending"
       }
     ],
     [
@@ -107,16 +97,6 @@ ticks:
       {
         "path": "/messageTimestamp",
         "order": "ascending"
-      }
-    ],
-    [
-      {
-        "path": "/pk",
-        "order": "descending"
-      },
-      {
-        "path": "/messageTimestamp",
-        "order": "descending"
       }
     ]
   ],
@@ -188,7 +168,7 @@ GET http://localhost:8080/ticks/with-range-filters?rics=MSFT,AAPL,EUR=,NFLX,NVDA
 
 **Example Request:**
 ```http
-GET /ticks/with-price-volume-filters?rics=MSFT,AAPL&docTypes=TAS&totalTicks=5000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&trdprc1Min=100.0&trdprc1Max=200.0&trdvol1Min=1000.0&projections=TRDPRC_1,TRDVOL_1
+GET http://localhost:8080/ticks/with-price-volume-filters?rics=MSFT,AAPL&docTypes=TAS&totalTicks=5000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&trdprc1Min=100.0&trdprc1Max=200.0&trdvol1Min=1000.0&projections=TRDPRC_1,TRDVOL_1
 ```
 
 ### 4. Tick Query with Qualifiers Filters
@@ -208,7 +188,7 @@ GET /ticks/with-price-volume-filters?rics=MSFT,AAPL&docTypes=TAS&totalTicks=5000
 
 **Example Request:**
 ```http
-GET /ticks/with-qualifiers-filters?rics=MSFT,AAPL&docTypes=TAS&totalTicks=5000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&containsFilters=ASK_TONE&notContainsFilters=IT&projections=qualifiers,TRDPRC_1
+GET http://localhost:8080/ticks/with-qualifiers-filters?rics=MSFT,AAPL&docTypes=TAS&totalTicks=5000&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&containsFilters=ASK_TONE&notContainsFilters=IT&projections=qualifiers,TRDPRC_1
 ```
 
 ## Response Format
