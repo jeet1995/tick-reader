@@ -178,6 +178,74 @@ public final class TickServiceUtils {
     }
 
     /**
+     * Executes sequential draining strategy with basic fetchNextPage functionality.
+     * This method integrates the existing fetchNextPage methods with the sequential draining strategy.
+     *
+     * @param ricQueryExecutionState The execution state containing all contexts
+     * @param fetchFunction The function wrapper for the specific fetchNextPage method
+     * @param executorService The executor service for parallel execution
+     * @return CompletableFuture that completes when all contexts are drained
+     */
+    public static CompletableFuture<Void> executeSequentialDrainingWithFetchNextPage(
+            RicQueryExecutionState ricQueryExecutionState,
+            java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction,
+            ExecutorService executorService) {
+        
+        return ricQueryExecutionState.drainSequentialStrategy(executorService, fetchFunction);
+    }
+
+    /**
+     * Executes sequential draining strategy with range filters functionality.
+     * This method integrates the existing fetchNextPageWithRangeFilters methods with the sequential draining strategy.
+     *
+     * @param ricQueryExecutionState The execution state containing all contexts
+     * @param fetchFunction The function wrapper for the fetchNextPageWithRangeFilters method
+     * @param executorService The executor service for parallel execution
+     * @return CompletableFuture that completes when all contexts are drained
+     */
+    public static CompletableFuture<Void> executeSequentialDrainingWithRangeFilters(
+            RicQueryExecutionState ricQueryExecutionState,
+            java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction,
+            ExecutorService executorService) {
+        
+        return ricQueryExecutionState.drainSequentialStrategy(executorService, fetchFunction);
+    }
+
+    /**
+     * Executes sequential draining strategy with price-volume filters functionality.
+     * This method integrates the existing fetchNextPageWithPriceVolumeFilters methods with the sequential draining strategy.
+     *
+     * @param ricQueryExecutionState The execution state containing all contexts
+     * @param fetchFunction The function wrapper for the fetchNextPageWithPriceVolumeFilters method
+     * @param executorService The executor service for parallel execution
+     * @return CompletableFuture that completes when all contexts are drained
+     */
+    public static CompletableFuture<Void> executeSequentialDrainingWithPriceVolumeFilters(
+            RicQueryExecutionState ricQueryExecutionState,
+            java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction,
+            ExecutorService executorService) {
+        
+        return ricQueryExecutionState.drainSequentialStrategy(executorService, fetchFunction);
+    }
+
+    /**
+     * Executes sequential draining strategy with qualifiers filters functionality.
+     * This method integrates the existing fetchNextPageWithQualifiersFilters methods with the sequential draining strategy.
+     *
+     * @param ricQueryExecutionState The execution state containing all contexts
+     * @param fetchFunction The function wrapper for the fetchNextPageWithQualifiersFilters method
+     * @param executorService The executor service for parallel execution
+     * @return CompletableFuture that completes when all contexts are drained
+     */
+    public static CompletableFuture<Void> executeSequentialDrainingWithQualifiersFilters(
+            RicQueryExecutionState ricQueryExecutionState,
+            java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction,
+            ExecutorService executorService) {
+        
+        return ricQueryExecutionState.drainSequentialStrategy(executorService, fetchFunction);
+    }
+
+    /**
      * Checks if the execution state has reached its target tick count.
      *
      * @param ricQueryExecutionState The execution state to check
