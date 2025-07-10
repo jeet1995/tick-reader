@@ -543,7 +543,6 @@ public class TickServiceImpl implements TicksService {
         Map<String, RicQueryExecutionState> ricToRicQueryExecutionState = new HashMap<>();
 
         for (String ric : rics) {
-            List<TickRequestContextPerPartitionKey> tickRequestContexts = new ArrayList<>();
 
             // Step 1: Calculate hash for RIC to determine Cosmos DB account
             int seed = 42;
@@ -560,6 +559,8 @@ public class TickServiceImpl implements TicksService {
 
             // Step 4: Create execution contexts for each date
             for (String date : datesInBetween) {
+                List<TickRequestContextPerPartitionKey> tickRequestContexts = new ArrayList<>();
+
                 // Get Cosmos DB client for this account
                 CosmosAsyncClient asyncClient = this.clientFactory.getCosmosAsyncClient(hashIdForRic);
 
@@ -579,32 +580,24 @@ public class TickServiceImpl implements TicksService {
                 CosmosAsyncContainer asyncContainer = asyncClient.getDatabase(databaseName)
                         .getContainer(cosmosDbAccount.getContainerNamePrefix() + date + cosmosDbAccount.getContainerNameSuffix());
 
-                // Create tick identifier for this RIC+date combination
-                String tickIdentifier = TickServiceUtils.constructTickIdentifierPrefix(ric, date);
+                for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
+                    // Create tick identifier for this RIC+date combination
+                    String tickIdentifier = TickServiceUtils.constructTickIdentifierPrefix(ric, date) + "|" + i;
 
-                // Create execution context
-                TickRequestContextPerPartitionKey tickRequestContext = new TickRequestContextPerPartitionKey(
-                        asyncContainer,
-                        tickIdentifier,
-                        date,
-                        dateFormat);
+                    // Create execution context
+                    TickRequestContextPerPartitionKey tickRequestContext = new TickRequestContextPerPartitionKey(
+                            asyncContainer,
+                            tickIdentifier,
+                            date,
+                            dateFormat);
 
-                tickRequestContexts.add(tickRequestContext);
-            }
+                    tickRequestContexts.add(tickRequestContext);
+                }
 
-            // Step 5: Create execution state for this RIC
-            if (!tickRequestContexts.isEmpty()) {
-                // Group contexts by date for better organization
-                Map<String, List<TickRequestContextPerPartitionKey>> contextsByDate = tickRequestContexts.stream()
-                        .collect(Collectors.groupingBy(TickRequestContextPerPartitionKey::getRequestDateAsString));
-                
-                List<RicQueryExecutionStateByDate> ricQueryExecutionStatesByDate = contextsByDate.entrySet().stream()
-                        .map(entry -> new RicQueryExecutionStateByDate(entry.getValue(), entry.getKey()))
-                        .collect(Collectors.toList());
-                
-                ricToRicQueryExecutionState.put(ric, new RicQueryExecutionState(ricQueryExecutionStatesByDate));
-            } else {
-                logger.warn("No tick request contexts found for ric: {}", ric);
+                ricToRicQueryExecutionState.putIfAbsent(ric, new RicQueryExecutionState(new ArrayList<>()));
+                List<RicQueryExecutionStateByDate> ricQueryExecutionStateByDates = ricToRicQueryExecutionState.get(ric).getRicQueryExecutionStatesByDate();
+
+                ricQueryExecutionStateByDates.add(new RicQueryExecutionStateByDate(tickRequestContexts, date));
             }
         }
 
@@ -1659,19 +1652,19 @@ public class TickServiceImpl implements TicksService {
         docTypePlaceholders.append(")");
 
         // Build partition key filter parameters
-        StringBuilder partitionKeyPlaceholders = new StringBuilder();
-        partitionKeyPlaceholders.append("(");
-
-        // Create parameters for each shard (partition key)
-        for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
-            String param = "@pk" + i;
-            parameters.add(new SqlParameter(param, tickIdentifier + "|" + i));
-            partitionKeyPlaceholders.append(param);
-            if (i <= this.cosmosDbAccountConfiguration.getShardCountPerRic() - 1) {
-                partitionKeyPlaceholders.append(", ");
-            }
-        }
-        partitionKeyPlaceholders.append(")");
+//        StringBuilder partitionKeyPlaceholders = new StringBuilder();
+//        partitionKeyPlaceholders.append("(");
+//
+//        // Create parameters for each shard (partition key)
+//        for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
+//            String param = "@pk" + i;
+//            parameters.add(new SqlParameter(param, tickIdentifier + "|" + i));
+//            partitionKeyPlaceholders.append(param);
+//            if (i <= this.cosmosDbAccountConfiguration.getShardCountPerRic() - 1) {
+//                partitionKeyPlaceholders.append(", ");
+//            }
+//        }
+//        partitionKeyPlaceholders.append(")");
 
         // Build SELECT clause based on projections
         String selectClause = buildSelectClause("C", projections);
@@ -1679,12 +1672,12 @@ public class TickServiceImpl implements TicksService {
         // Build final query with appropriate sorting
         if (pinStart) {
             // Ascending order for pinStart=true
-            String query = "SELECT " + selectClause + " FROM C WHERE C.pk IN " + partitionKeyPlaceholders + " AND C.docType IN " + docTypePlaceholders +
+            String query = "SELECT " + selectClause + " FROM C WHERE C.pk = " + tickIdentifier + " AND C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp ASC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
-            String query = "SELECT " + selectClause + " FROM C WHERE C.pk IN " + partitionKeyPlaceholders + " AND C.docType IN " + docTypePlaceholders +
+            String query = "SELECT " + selectClause + " FROM C WHERE C.pk = " + tickIdentifier + " AND C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp DESC";
             return new SqlQuerySpec(query, parameters);
         }
