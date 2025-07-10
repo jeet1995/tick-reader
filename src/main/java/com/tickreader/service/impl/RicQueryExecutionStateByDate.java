@@ -175,7 +175,7 @@ public class RicQueryExecutionStateByDate {
      * @param fetchFunction Function to fetch next page for a context
      * @return CompletableFuture that completes when all contexts are drained or target is reached
      */
-    public CompletableFuture<Void> drainParallel(ExecutorService executorService, 
+    public CompletableFuture<Void> drainParallel(RicQueryExecutionState ricQueryExecutionState, ExecutorService executorService,
                                                java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction) {
         List<TickRequestContextPerPartitionKey> activeContexts = getActiveContexts();
         
@@ -187,7 +187,7 @@ public class RicQueryExecutionStateByDate {
         List<CompletableFuture<Void>> tasks = activeContexts.stream()
                 .map(context -> CompletableFuture.runAsync(() -> {
                     try {
-                        fetchFunction.apply(context).get();
+                        fetchFunction.apply(ricQueryExecutionState, context).get();
                     } catch (Exception e) {
                         // Log error but continue with other contexts
                         System.err.println("Error draining context: " + e.getMessage());

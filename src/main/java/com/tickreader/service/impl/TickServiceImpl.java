@@ -6,6 +6,7 @@ import com.azure.cosmos.CosmosException;
 import com.azure.cosmos.implementation.Configs;
 import com.azure.cosmos.models.CosmosQueryRequestOptions;
 import com.azure.cosmos.models.FeedResponse;
+import com.azure.cosmos.models.PartitionKey;
 import com.azure.cosmos.models.SqlParameter;
 import com.azure.cosmos.models.SqlQuerySpec;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -18,9 +19,7 @@ import com.tickreader.entity.BaseTick;
 import com.tickreader.entity.Tick;
 import com.tickreader.entity.TickWithNoNulls;
 import com.tickreader.service.TicksService;
-import com.tickreader.service.impl.RicQueryExecutionStateByDate;
 import com.tickreader.service.utils.TickServiceUtils;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.spark.unsafe.hash.Murmur3_x86_32;
 import org.apache.spark.unsafe.types.UTF8String;
 import org.slf4j.Logger;
@@ -29,35 +28,29 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
+import java.lang.InterruptedException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.PriorityQueue;
 import java.util.Set;
-import java.util.TreeSet;
 import java.util.UUID;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.InterruptedException;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
-import java.util.function.BiFunction;
 
 /**
  * Implementation of TicksService that provides high-performance tick data retrieval from Cosmos DB.
@@ -200,7 +193,7 @@ public class TickServiceImpl implements TicksService {
             return getTicksWithRangeFiltersAsync(rics, docTypes, totalTicks, pinStart, startTime, endTime, 
                     includeNullValues, pageSize, includeDiagnostics, projections,
                     trdprc1Min, trdprc1Max, trnovrUnsMin, trnovrUnsMax).get();
-        } catch (InterruptedException | ExecutionException e) {
+        } catch (ExecutionException | InterruptedException e) {
             logger.error("Error executing getTicksWithRangeFilters: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to get ticks with range filters", e);
         }
@@ -675,21 +668,24 @@ public class TickServiceImpl implements TicksService {
         List<Tick> resultTicks = new ArrayList<>();
 
         // Phase 1: Execute sequential draining strategy for each RIC
-        try {
-            // Create the fetch function wrapper
-            java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction =
-                    createFetchNextPageWrapper(docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections);
 
-            // Execute sequential draining for each RIC execution state
-            List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
-                    .map(ricQueryExecutionState -> ricQueryExecutionState.drainSequentialStrategy(queryExecutorService, fetchFunction))
-                    .collect(Collectors.toList());
+        while (!ricToRicQueryExecutionState.values().stream().allMatch(RicQueryExecutionState::isCompleted)) {
+            try {
+                // Create the fetch function wrapper
+                java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction =
+                        createFetchNextPageWrapper(docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections);
 
-            // Wait for all tasks to complete
-            CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
-        } catch (InterruptedException | ExecutionException e) {
-            logger.error("Error during query execution: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to execute queries", e);
+                // Execute sequential draining for each RIC execution state
+                List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
+                        .map(ricQueryExecutionState -> ricQueryExecutionState.drainSequentialStrategy(queryExecutorService, fetchFunction))
+                        .collect(Collectors.toList());
+
+                // Wait for all tasks to complete
+                CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
+            } catch (InterruptedException | ExecutionException e) {
+                logger.error("Error during query execution: {}", e.getMessage(), e);
+                throw new RuntimeException("Failed to execute queries", e);
+            }
         }
 
         // Record execution end time and log duration
@@ -837,85 +833,87 @@ public class TickServiceImpl implements TicksService {
             Double trdprc1Max,
             Double trdvol1Min) {
 
-        // Record execution start time for performance tracking
-        Instant executionStartTime = Instant.now();
-        logger.info("Execution of query with price volume filters and correlationId : {} started at : {}", correlationId, executionStartTime);
+//        // Record execution start time for performance tracking
+//        Instant executionStartTime = Instant.now();
+//        logger.info("Execution of query with price volume filters and correlationId : {} started at : {}", correlationId, executionStartTime);
+//
+//        // Thread-safe list for collecting Cosmos DB diagnostics
+//        List<String> cosmosDiagnosticsContextList = Collections.synchronizedList(new ArrayList<>());
+//
+//        // List to hold all retrieved ticks
+//        List<Tick> resultTicks = new ArrayList<>();
+//
+//        // Phase 1: Execute parallel queries until all are completed
+//        while (!ricToRicQueryExecutionState.values().stream().allMatch(RicQueryExecutionState::isCompleted)) {
+//            try {
+//                // Create concurrent tasks for each RIC execution state
+//                List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
+//                        .map(ricQueryExecutionState -> CompletableFuture.runAsync(() ->
+//                                        fetchNextPageWithPriceVolumeFilters(ricQueryExecutionState, docTypes, startTime, endTime,
+//                                                pageSize, pinStart, totalTicks, projections, trdprc1Min, trdprc1Max, trdvol1Min),
+//                                queryExecutorService))
+//                        .collect(Collectors.toList());
+//
+//                // Wait for all tasks to complete
+//                CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
+//            } catch (InterruptedException | ExecutionException e) {
+//                logger.error("Error during query execution with price volume filters: {}", e.getMessage(), e);
+//                throw new RuntimeException("Failed to execute queries with price volume filters", e);
+//            }
+//        }
+//
+//        // Record execution end time and log duration
+//        Instant executionEndTime = Instant.now();
+//        logger.info("Execution of query with price volume filters and correlationId : {} finished in duration : {}", correlationId, Duration.between(executionStartTime, executionEndTime));
+//
+//        // Phase 2: Aggregate results from all RICs
+//        for (String ric : rics) {
+//            RicQueryExecutionState ricQueryExecutionState = ricToRicQueryExecutionState.get(ric);
+//            if (ricQueryExecutionState == null) {
+//                logger.warn("No RicQueryExecutionState found for ric: {}", ric);
+//                continue;
+//            }
+//
+//            List<Tick> ticks = ricQueryExecutionState.getTicks();
+//            if (ticks.isEmpty()) {
+//                logger.warn("No ticks found for ric: {}", ric);
+//                continue;
+//            }
+//
+//            // Collect Cosmos DB diagnostics from all contexts
+//            for (TickRequestContextPerPartitionKey tickRequestContextPerPartitionKey : ricQueryExecutionState.getTickRequestContexts()) {
+//                if (tickRequestContextPerPartitionKey.getCosmosDiagnosticsList() != null) {
+//                    cosmosDiagnosticsContextList.addAll(tickRequestContextPerPartitionKey.getCosmosDiagnosticsList().stream().map(cosmosDiagnosticsContext -> cosmosDiagnosticsContext.getDiagnosticsContext().toJson()).collect(Collectors.toList()));
+//                }
+//            }
+//
+//            Collections.sort(ticks, (t1, t2) -> t2.getMessageTimestamp().compareTo(t1.getMessageTimestamp()));
+//
+//            resultTicks.addAll(ticks);
+//        }
+//
+//        // Phase 3: Convert to final response format
+//        List<BaseTick> finalTicks = new ArrayList<>();
+//
+//        if (includeNullValues) {
+//            // Include all ticks with null values
+//            finalTicks.addAll(resultTicks);
+//        } else {
+//            // Convert to TickWithNoNulls to filter out null values
+//            List<TickWithNoNulls> newTicks = resultTicks.stream()
+//                    .map(tick -> nonNullObjectMapper.convertValue(tick, TickWithNoNulls.class))
+//                    .collect(Collectors.toList());
+//
+//            finalTicks.addAll(newTicks);
+//        }
+//
+//        // Return response with execution metrics
+//        return new TickResponse(
+//                finalTicks,
+//                includeDiagnostics ? cosmosDiagnosticsContextList : Collections.emptyList(),
+//                Duration.between(executionStartTime, executionEndTime));
 
-        // Thread-safe list for collecting Cosmos DB diagnostics
-        List<String> cosmosDiagnosticsContextList = Collections.synchronizedList(new ArrayList<>());
-
-        // List to hold all retrieved ticks
-        List<Tick> resultTicks = new ArrayList<>();
-
-        // Phase 1: Execute parallel queries until all are completed
-        while (!ricToRicQueryExecutionState.values().stream().allMatch(RicQueryExecutionState::isCompleted)) {
-            try {
-                // Create concurrent tasks for each RIC execution state
-                List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
-                        .map(ricQueryExecutionState -> CompletableFuture.runAsync(() ->
-                                        fetchNextPageWithPriceVolumeFilters(ricQueryExecutionState, docTypes, startTime, endTime, 
-                                                pageSize, pinStart, totalTicks, projections, trdprc1Min, trdprc1Max, trdvol1Min),
-                                queryExecutorService))
-                        .collect(Collectors.toList());
-
-                // Wait for all tasks to complete
-                CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
-            } catch (InterruptedException | ExecutionException e) {
-                logger.error("Error during query execution with price volume filters: {}", e.getMessage(), e);
-                throw new RuntimeException("Failed to execute queries with price volume filters", e);
-            }
-        }
-
-        // Record execution end time and log duration
-        Instant executionEndTime = Instant.now();
-        logger.info("Execution of query with price volume filters and correlationId : {} finished in duration : {}", correlationId, Duration.between(executionStartTime, executionEndTime));
-
-        // Phase 2: Aggregate results from all RICs
-        for (String ric : rics) {
-            RicQueryExecutionState ricQueryExecutionState = ricToRicQueryExecutionState.get(ric);
-            if (ricQueryExecutionState == null) {
-                logger.warn("No RicQueryExecutionState found for ric: {}", ric);
-                continue;
-            }
-
-            List<Tick> ticks = ricQueryExecutionState.getTicks();
-            if (ticks.isEmpty()) {
-                logger.warn("No ticks found for ric: {}", ric);
-                continue;
-            }
-
-            // Collect Cosmos DB diagnostics from all contexts
-            for (TickRequestContextPerPartitionKey tickRequestContextPerPartitionKey : ricQueryExecutionState.getTickRequestContexts()) {
-                if (tickRequestContextPerPartitionKey.getCosmosDiagnosticsList() != null) {
-                    cosmosDiagnosticsContextList.addAll(tickRequestContextPerPartitionKey.getCosmosDiagnosticsList().stream().map(cosmosDiagnosticsContext -> cosmosDiagnosticsContext.getDiagnosticsContext().toJson()).collect(Collectors.toList()));
-                }
-            }
-
-            Collections.sort(ticks, (t1, t2) -> t2.getMessageTimestamp().compareTo(t1.getMessageTimestamp()));
-
-            resultTicks.addAll(ticks);
-        }
-
-        // Phase 3: Convert to final response format
-        List<BaseTick> finalTicks = new ArrayList<>();
-
-        if (includeNullValues) {
-            // Include all ticks with null values
-            finalTicks.addAll(resultTicks);
-        } else {
-            // Convert to TickWithNoNulls to filter out null values
-            List<TickWithNoNulls> newTicks = resultTicks.stream()
-                    .map(tick -> nonNullObjectMapper.convertValue(tick, TickWithNoNulls.class))
-                    .collect(Collectors.toList());
-
-            finalTicks.addAll(newTicks);
-        }
-
-        // Return response with execution metrics
-        return new TickResponse(
-                finalTicks,
-                includeDiagnostics ? cosmosDiagnosticsContextList : Collections.emptyList(),
-                Duration.between(executionStartTime, executionEndTime));
+        return null;
     }
 
     /**
@@ -964,86 +962,88 @@ public class TickServiceImpl implements TicksService {
             List<String> startsWithFilters,
             List<String> notStartsWithFilters) {
 
-        // Record execution start time for performance tracking
-        Instant executionStartTime = Instant.now();
-        logger.info("Execution of query with qualifiers filters and correlationId : {} started at : {}", correlationId, executionStartTime);
+//        // Record execution start time for performance tracking
+//        Instant executionStartTime = Instant.now();
+//        logger.info("Execution of query with qualifiers filters and correlationId : {} started at : {}", correlationId, executionStartTime);
+//
+//        // Thread-safe list for collecting Cosmos DB diagnostics
+//        List<String> cosmosDiagnosticsContextList = Collections.synchronizedList(new ArrayList<>());
+//
+//        // List to hold all retrieved ticks
+//        List<Tick> resultTicks = new ArrayList<>();
+//
+//        // Phase 1: Execute parallel queries until all are completed
+//        while (!ricToRicQueryExecutionState.values().stream().allMatch(RicQueryExecutionState::isCompleted)) {
+//            try {
+//                // Create concurrent tasks for each RIC execution state
+//                List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
+//                        .map(ricQueryExecutionState -> CompletableFuture.runAsync(() ->
+//                                        fetchNextPageWithQualifiersFilters(ricQueryExecutionState, docTypes, startTime, endTime,
+//                                                pageSize, pinStart, totalTicks, projections, containsFilters, notContainsFilters,
+//                                                startsWithFilters, notStartsWithFilters),
+//                                queryExecutorService))
+//                        .collect(Collectors.toList());
+//
+//                // Wait for all tasks to complete
+//                CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
+//            } catch (InterruptedException | ExecutionException e) {
+//                logger.error("Error during query execution with qualifiers filters: {}", e.getMessage(), e);
+//                throw new RuntimeException("Failed to execute queries with qualifiers filters", e);
+//            }
+//        }
+//
+//        // Record execution end time and log duration
+//        Instant executionEndTime = Instant.now();
+//        logger.info("Execution of query with qualifiers filters and correlationId : {} finished in duration : {}", correlationId, Duration.between(executionStartTime, executionEndTime));
+//
+//        // Phase 2: Aggregate results from all RICs
+//        for (String ric : rics) {
+//            RicQueryExecutionState ricQueryExecutionState = ricToRicQueryExecutionState.get(ric);
+//            if (ricQueryExecutionState == null) {
+//                logger.warn("No RicQueryExecutionState found for ric: {}", ric);
+//                continue;
+//            }
+//
+//            List<Tick> ticks = ricQueryExecutionState.getTicks();
+//            if (ticks.isEmpty()) {
+//                logger.warn("No ticks found for ric: {}", ric);
+//                continue;
+//            }
+//
+//            // Collect Cosmos DB diagnostics from all contexts
+//            for (TickRequestContextPerPartitionKey tickRequestContextPerPartitionKey : ricQueryExecutionState.getTickRequestContexts()) {
+//                if (tickRequestContextPerPartitionKey.getCosmosDiagnosticsList() != null) {
+//                    cosmosDiagnosticsContextList.addAll(tickRequestContextPerPartitionKey.getCosmosDiagnosticsList().stream().map(cosmosDiagnosticsContext -> cosmosDiagnosticsContext.getDiagnosticsContext().toJson()).collect(Collectors.toList()));
+//                }
+//            }
+//
+//            Collections.sort(ticks, (t1, t2) -> t2.getMessageTimestamp().compareTo(t1.getMessageTimestamp()));
+//
+//            resultTicks.addAll(ticks);
+//        }
+//
+//        // Phase 3: Convert to final response format
+//        List<BaseTick> finalTicks = new ArrayList<>();
+//
+//        if (includeNullValues) {
+//            // Include all ticks with null values
+//            finalTicks.addAll(resultTicks);
+//        } else {
+//            // Convert to TickWithNoNulls to filter out null values
+//            List<TickWithNoNulls> newTicks = resultTicks.stream()
+//                    .map(tick -> nonNullObjectMapper.convertValue(tick, TickWithNoNulls.class))
+//                    .collect(Collectors.toList());
+//
+//            finalTicks.addAll(newTicks);
+//        }
+//
+//        // Return response with execution metrics
+//        return new TickResponse(
+//                finalTicks,
+//                includeDiagnostics ? cosmosDiagnosticsContextList : Collections.emptyList(),
+//                Duration.between(executionStartTime, executionEndTime));
 
-        // Thread-safe list for collecting Cosmos DB diagnostics
-        List<String> cosmosDiagnosticsContextList = Collections.synchronizedList(new ArrayList<>());
-
-        // List to hold all retrieved ticks
-        List<Tick> resultTicks = new ArrayList<>();
-
-        // Phase 1: Execute parallel queries until all are completed
-        while (!ricToRicQueryExecutionState.values().stream().allMatch(RicQueryExecutionState::isCompleted)) {
-            try {
-                // Create concurrent tasks for each RIC execution state
-                List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
-                        .map(ricQueryExecutionState -> CompletableFuture.runAsync(() ->
-                                        fetchNextPageWithQualifiersFilters(ricQueryExecutionState, docTypes, startTime, endTime, 
-                                                pageSize, pinStart, totalTicks, projections, containsFilters, notContainsFilters, 
-                                                startsWithFilters, notStartsWithFilters),
-                                queryExecutorService))
-                        .collect(Collectors.toList());
-
-                // Wait for all tasks to complete
-                CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
-            } catch (InterruptedException | ExecutionException e) {
-                logger.error("Error during query execution with qualifiers filters: {}", e.getMessage(), e);
-                throw new RuntimeException("Failed to execute queries with qualifiers filters", e);
-            }
-        }
-
-        // Record execution end time and log duration
-        Instant executionEndTime = Instant.now();
-        logger.info("Execution of query with qualifiers filters and correlationId : {} finished in duration : {}", correlationId, Duration.between(executionStartTime, executionEndTime));
-
-        // Phase 2: Aggregate results from all RICs
-        for (String ric : rics) {
-            RicQueryExecutionState ricQueryExecutionState = ricToRicQueryExecutionState.get(ric);
-            if (ricQueryExecutionState == null) {
-                logger.warn("No RicQueryExecutionState found for ric: {}", ric);
-                continue;
-            }
-
-            List<Tick> ticks = ricQueryExecutionState.getTicks();
-            if (ticks.isEmpty()) {
-                logger.warn("No ticks found for ric: {}", ric);
-                continue;
-            }
-
-            // Collect Cosmos DB diagnostics from all contexts
-            for (TickRequestContextPerPartitionKey tickRequestContextPerPartitionKey : ricQueryExecutionState.getTickRequestContexts()) {
-                if (tickRequestContextPerPartitionKey.getCosmosDiagnosticsList() != null) {
-                    cosmosDiagnosticsContextList.addAll(tickRequestContextPerPartitionKey.getCosmosDiagnosticsList().stream().map(cosmosDiagnosticsContext -> cosmosDiagnosticsContext.getDiagnosticsContext().toJson()).collect(Collectors.toList()));
-                }
-            }
-
-            Collections.sort(ticks, (t1, t2) -> t2.getMessageTimestamp().compareTo(t1.getMessageTimestamp()));
-
-            resultTicks.addAll(ticks);
-        }
-
-        // Phase 3: Convert to final response format
-        List<BaseTick> finalTicks = new ArrayList<>();
-
-        if (includeNullValues) {
-            // Include all ticks with null values
-            finalTicks.addAll(resultTicks);
-        } else {
-            // Convert to TickWithNoNulls to filter out null values
-            List<TickWithNoNulls> newTicks = resultTicks.stream()
-                    .map(tick -> nonNullObjectMapper.convertValue(tick, TickWithNoNulls.class))
-                    .collect(Collectors.toList());
-
-            finalTicks.addAll(newTicks);
-        }
-
-        // Return response with execution metrics
-        return new TickResponse(
-                finalTicks,
-                includeDiagnostics ? cosmosDiagnosticsContextList : Collections.emptyList(),
-                Duration.between(executionStartTime, executionEndTime));
+        return null;
     }
 
     /**
@@ -1078,6 +1078,7 @@ public class TickServiceImpl implements TicksService {
         // Step 2: Prepare query execution
         CosmosAsyncContainer asyncContainer = tickRequestContext.getAsyncContainer();
         CosmosQueryRequestOptions queryRequestOptions = new CosmosQueryRequestOptions();
+        queryRequestOptions.setPartitionKey(new PartitionKey(tickRequestContext.getTickIdentifier()));
 
         // Step 3: Build or retrieve SQL query specification
         SqlQuerySpec querySpec = tickRequestContext.getSqlQuerySpec() != null ?
@@ -1597,12 +1598,12 @@ public class TickServiceImpl implements TicksService {
         // Build final query with appropriate sorting
         if (pinStart) {
             // Ascending order for pinStart=true
-            String query = "SELECT " + selectClause + " FROM C WHERE C.pk = " + tickIdentifier + " AND C.docType IN " + docTypePlaceholders +
+            String query = "SELECT " + selectClause + " FROM C WHERE C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp ASC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
-            String query = "SELECT " + selectClause + " FROM C WHERE C.pk = " + tickIdentifier + " AND C.docType IN " + docTypePlaceholders +
+            String query = "SELECT " + selectClause + " FROM C WHERE C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp DESC";
             return new SqlQuerySpec(query, parameters);
         }

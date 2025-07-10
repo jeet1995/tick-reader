@@ -204,7 +204,7 @@ public class RicQueryExecutionState {
 
                 // Drain this date state completely
                 try {
-                    dateState.drainParallel(executorService, fetchFunction).get();
+                    dateState.drainParallel(this, executorService, fetchFunction).get();
                 } catch (Exception e) {
                     // Log error but continue with next date state
                     System.err.println("Error draining date state " + dateState.getDateKey() + ": " + e.getMessage());
@@ -230,7 +230,7 @@ public class RicQueryExecutionState {
     public CompletableFuture<Void> drainParallelStrategy(ExecutorService executorService,
                                                        java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction) {
         List<CompletableFuture<Void>> dateGroupTasks = ricQueryExecutionStatesByDate.stream()
-                .map(dateState -> dateState.drainParallel(executorService, fetchFunction))
+                .map(dateState -> dateState.drainParallel(this, executorService, fetchFunction))
                 .collect(Collectors.toList());
 
         return CompletableFuture.allOf(dateGroupTasks.toArray(new CompletableFuture[0]));

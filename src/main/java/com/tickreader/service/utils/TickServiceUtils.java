@@ -51,27 +51,6 @@ public final class TickServiceUtils {
         return dates;
     }
 
-    public static TickRequestContextPerPartitionKey evaluateTickRequestContextToExecute(RicQueryExecutionState ricQueryExecutionState) {
-        List<TickRequestContextPerPartitionKey> tickRequestContexts = ricQueryExecutionState.getTickRequestContexts();
-
-        if (ricQueryExecutionState.isCompleted()) {
-            return null;
-        }
-
-        if (tickRequestContexts.isEmpty()) {
-            throw new IllegalStateException("No TickRequestContextPerPartitionKey found for the given RicQueryExecutionState.");
-        }
-
-        for (TickRequestContextPerPartitionKey tickRequestContextPerPartitionKey : tickRequestContexts) {
-
-            if (tickRequestContextPerPartitionKey.getContinuationToken() == null || !tickRequestContextPerPartitionKey.getContinuationToken().equalsIgnoreCase("drained")) {
-                return tickRequestContextPerPartitionKey;
-            }
-        }
-
-        return null;
-    }
-
     /**
      * Evaluates the next active date group for parallel draining strategy.
      *
