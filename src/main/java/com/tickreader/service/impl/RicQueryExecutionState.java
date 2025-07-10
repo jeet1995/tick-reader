@@ -27,6 +27,11 @@ public class RicQueryExecutionState {
         this.ricQueryExecutionStatesByDate = ricQueryExecutionStatesByDate;
         this.isCompleted = false;
         this.totalTickCount = totalTickCount;
+        
+        // Set parent reference for each date state
+        for (RicQueryExecutionStateByDate dateState : ricQueryExecutionStatesByDate) {
+            dateState.setParentState(this);
+        }
     }
 
     /**
@@ -44,6 +49,9 @@ public class RicQueryExecutionState {
         this.ricQueryExecutionStatesByDate.add(singleDateState);
         this.isCompleted = false;
         this.totalTickCount = totalTickCount;
+        
+        // Set parent reference for the single date state
+        singleDateState.setParentState(this);
     }
 
     public synchronized void addTicks(List<Tick> ticksToAdd) {
@@ -76,11 +84,26 @@ public class RicQueryExecutionState {
     }
 
     public synchronized boolean isCompleted() {
-        return this.isCompleted;
+        // Check if overall state is completed AND all individual date states are completed
+        boolean allDateStatesCompleted = ricQueryExecutionStatesByDate.stream()
+                .allMatch(RicQueryExecutionStateByDate::isCompleted);
+        return this.isCompleted && allDateStatesCompleted;
     }
 
     public synchronized void setCompleted(boolean completed) {
         this.isCompleted = completed;
+    }
+
+    /**
+     * Updates the completion status based on individual date states.
+     * This method should be called when individual date states are marked as completed.
+     */
+    public synchronized void updateCompletionStatus() {
+        boolean allDateStatesCompleted = ricQueryExecutionStatesByDate.stream()
+                .allMatch(RicQueryExecutionStateByDate::isCompleted);
+        
+        // Mark as completed if all date states are completed OR if we've reached the target
+        this.isCompleted = allDateStatesCompleted || isOverallTargetReached();
     }
 
     /**

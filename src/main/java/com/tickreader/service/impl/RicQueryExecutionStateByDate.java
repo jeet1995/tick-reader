@@ -17,6 +17,7 @@ public class RicQueryExecutionStateByDate {
     private boolean isCompleted;
     private int targetTickCount;
     private int currentTickCount;
+    private RicQueryExecutionState parentState;
 
     /**
      * Constructs a new RicQueryExecutionStateByDate with the specified contexts and date key.
@@ -60,12 +61,26 @@ public class RicQueryExecutionStateByDate {
     }
 
     /**
+     * Sets the parent RicQueryExecutionState for this date group.
+     *
+     * @param parentState The parent RicQueryExecutionState
+     */
+    public void setParentState(RicQueryExecutionState parentState) {
+        this.parentState = parentState;
+    }
+
+    /**
      * Sets the completion status for this date group.
      *
      * @param completed true if this date group is completed, false otherwise
      */
     public void setCompleted(boolean completed) {
         this.isCompleted = completed;
+        
+        // Update parent state completion status if this date state is completed
+        if (completed && parentState != null) {
+            parentState.updateCompletionStatus();
+        }
     }
 
     /**
@@ -105,6 +120,12 @@ public class RicQueryExecutionStateByDate {
         this.currentTickCount += tickCount;
         if (this.currentTickCount >= this.targetTickCount) {
             this.isCompleted = true;
+            
+            // Update parent state completion status when target is reached
+            if (parentState != null) {
+                parentState.updateCompletionStatus();
+            }
+            
             return true;
         }
         return false;
