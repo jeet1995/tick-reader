@@ -594,7 +594,15 @@ public class TickServiceImpl implements TicksService {
 
             // Step 5: Create execution state for this RIC
             if (!tickRequestContexts.isEmpty()) {
-                ricToRicQueryExecutionState.put(ric, new RicQueryExecutionState(tickRequestContexts));
+                // Group contexts by date for better organization
+                Map<String, List<TickRequestContextPerPartitionKey>> contextsByDate = tickRequestContexts.stream()
+                        .collect(Collectors.groupingBy(TickRequestContextPerPartitionKey::getRequestDateAsString));
+                
+                List<RicQueryExecutionStateByDate> ricQueryExecutionStatesByDate = contextsByDate.entrySet().stream()
+                        .map(entry -> new RicQueryExecutionStateByDate(entry.getValue(), entry.getKey()))
+                        .collect(Collectors.toList());
+                
+                ricToRicQueryExecutionState.put(ric, new RicQueryExecutionState(ricQueryExecutionStatesByDate));
             } else {
                 logger.warn("No tick request contexts found for ric: {}", ric);
             }

@@ -2,6 +2,7 @@ package com.tickreader.service.utils;
 
 import com.azure.cosmos.CosmosException;
 import com.tickreader.service.impl.RicQueryExecutionState;
+import com.tickreader.service.impl.RicQueryExecutionStateByDate;
 import com.tickreader.service.impl.TickRequestContextPerPartitionKey;
 
 import java.time.LocalDate;
@@ -9,6 +10,9 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.function.Function;
 
 public final class TickServiceUtils {
 
@@ -65,6 +69,66 @@ public final class TickServiceUtils {
         }
 
         return null;
+    }
+
+    /**
+     * Evaluates the next active date group for parallel draining strategy.
+     *
+     * @param ricQueryExecutionState The execution state to evaluate
+     * @return The next active date group, or null if all are completed
+     */
+    public static RicQueryExecutionStateByDate evaluateNextActiveDateGroup(RicQueryExecutionState ricQueryExecutionState) {
+        if (ricQueryExecutionState.isCompleted()) {
+            return null;
+        }
+
+        return ricQueryExecutionState.getNextActiveDateGroup();
+    }
+
+    /**
+     * Executes parallel draining strategy with tick count management.
+     * Drains all active contexts in parallel until target tick count is reached.
+     *
+     * @param ricQueryExecutionState The execution state to drain
+     * @param executorService Executor service for parallel execution
+     * @param fetchFunction Function to fetch next page for a context
+     * @param targetTickCount Target number of ticks to collect
+     * @return CompletableFuture that completes when target is reached or all contexts are drained
+     */
+    public static CompletableFuture<Void> executeParallelDrainingStrategy(
+            RicQueryExecutionState ricQueryExecutionState,
+            ExecutorService executorService,
+            Function<TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction,
+            int targetTickCount) {
+
+        // Set target tick count for all date groups
+        ricQueryExecutionState.setTargetTickCount(targetTickCount);
+
+        // Execute parallel draining strategy
+        return ricQueryExecutionState.drainParallelStrategy(executorService, fetchFunction);
+    }
+
+    /**
+     * Checks if the execution state has reached its target tick count.
+     *
+     * @param ricQueryExecutionState The execution state to check
+     * @return true if target is reached, false otherwise
+     */
+    public static boolean isTargetReached(RicQueryExecutionState ricQueryExecutionState) {
+        return ricQueryExecutionState.isOverallTargetReached();
+    }
+
+    /**
+     * Gets the progress information for the execution state.
+     *
+     * @param ricQueryExecutionState The execution state to get progress for
+     * @return String representation of progress (current/target ticks)
+     */
+    public static String getProgressInfo(RicQueryExecutionState ricQueryExecutionState) {
+        int current = ricQueryExecutionState.getTotalCurrentTickCount();
+        int target = ricQueryExecutionState.getTotalTargetTickCount();
+        return String.format("Progress: %d/%d ticks (%.1f%%)", current, target, 
+                target > 0 ? (double) current / target * 100 : 0.0);
     }
 
     public static String constructTickIdentifierPrefix(String ric, String date) {
