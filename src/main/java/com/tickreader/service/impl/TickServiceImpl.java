@@ -6,6 +6,7 @@ import com.azure.cosmos.CosmosException;
 import com.azure.cosmos.implementation.Configs;
 import com.azure.cosmos.models.CosmosQueryRequestOptions;
 import com.azure.cosmos.models.FeedResponse;
+import com.azure.cosmos.models.PartitionKey;
 import com.azure.cosmos.models.SqlParameter;
 import com.azure.cosmos.models.SqlQuerySpec;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -27,14 +28,28 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
+import java.lang.InterruptedException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 /**
@@ -178,7 +193,7 @@ public class TickServiceImpl implements TicksService {
             return getTicksWithRangeFiltersAsync(rics, docTypes, totalTicks, pinStart, startTime, endTime, 
                     includeNullValues, pageSize, includeDiagnostics, projections,
                     trdprc1Min, trdprc1Max, trnovrUnsMin, trnovrUnsMax).get();
-        } catch (InterruptedException | ExecutionException e) {
+        } catch (ExecutionException | InterruptedException e) {
             logger.error("Error executing getTicksWithRangeFilters: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to get ticks with range filters", e);
         }
@@ -278,7 +293,7 @@ public class TickServiceImpl implements TicksService {
 
             // Build execution contexts for each RIC across date ranges
             Map<String, RicQueryExecutionState> ricToRicQueryExecutionState =
-                buildTickRequestContexts(rics, newStartTime, newEndTime, pinStart);
+                buildTickRequestContexts(rics, newStartTime, newEndTime, pinStart, totalTicks);
 
             // Generate correlation ID for request tracking
             String correlationId = UUID.randomUUID().toString();
@@ -348,7 +363,7 @@ public class TickServiceImpl implements TicksService {
 
             // Build execution contexts for each RIC across date ranges
             Map<String, RicQueryExecutionState> ricToRicQueryExecutionState =
-                buildTickRequestContexts(rics, newStartTime, newEndTime, pinStart);
+                buildTickRequestContexts(rics, newStartTime, newEndTime, pinStart, totalTicks);
 
             // Generate correlation ID for request tracking
             String correlationId = UUID.randomUUID().toString();
@@ -420,7 +435,7 @@ public class TickServiceImpl implements TicksService {
 
             // Build execution contexts for each RIC across date ranges
             Map<String, RicQueryExecutionState> ricToRicQueryExecutionState =
-                buildTickRequestContexts(rics, newStartTime, newEndTime, pinStart);
+                buildTickRequestContexts(rics, newStartTime, newEndTime, pinStart, totalTicks);
 
             // Generate correlation ID for request tracking
             String correlationId = UUID.randomUUID().toString();
@@ -493,7 +508,7 @@ public class TickServiceImpl implements TicksService {
 
             // Build execution contexts for each RIC across date ranges
             Map<String, RicQueryExecutionState> ricToRicQueryExecutionState =
-                buildTickRequestContexts(rics, newStartTime, newEndTime, pinStart);
+                buildTickRequestContexts(rics, newStartTime, newEndTime, pinStart, totalTicks);
 
             // Generate correlation ID for request tracking
             String correlationId = UUID.randomUUID().toString();
@@ -538,12 +553,12 @@ public class TickServiceImpl implements TicksService {
             List<String> rics, 
             LocalDateTime startTime, 
             LocalDateTime endTime,
-            boolean pinStart) {
+            boolean pinStart,
+            int totalTicks) {
 
         Map<String, RicQueryExecutionState> ricToRicQueryExecutionState = new HashMap<>();
 
         for (String ric : rics) {
-            List<TickRequestContextPerPartitionKey> tickRequestContexts = new ArrayList<>();
 
             // Step 1: Calculate hash for RIC to determine Cosmos DB account
             int seed = 42;
@@ -560,6 +575,8 @@ public class TickServiceImpl implements TicksService {
 
             // Step 4: Create execution contexts for each date
             for (String date : datesInBetween) {
+                List<TickRequestContextPerPartitionKey> tickRequestContexts = new ArrayList<>();
+
                 // Get Cosmos DB client for this account
                 CosmosAsyncClient asyncClient = this.clientFactory.getCosmosAsyncClient(hashIdForRic);
 
@@ -579,24 +596,24 @@ public class TickServiceImpl implements TicksService {
                 CosmosAsyncContainer asyncContainer = asyncClient.getDatabase(databaseName)
                         .getContainer(cosmosDbAccount.getContainerNamePrefix() + date + cosmosDbAccount.getContainerNameSuffix());
 
-                // Create tick identifier for this RIC+date combination
-                String tickIdentifier = TickServiceUtils.constructTickIdentifierPrefix(ric, date);
+                for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
+                    // Create tick identifier for this RIC+date combination
+                    String tickIdentifier = TickServiceUtils.constructTickIdentifierPrefix(ric, date) + "|" + i;
 
-                // Create execution context
-                TickRequestContextPerPartitionKey tickRequestContext = new TickRequestContextPerPartitionKey(
-                        asyncContainer,
-                        tickIdentifier,
-                        date,
-                        dateFormat);
+                    // Create execution context
+                    TickRequestContextPerPartitionKey tickRequestContext = new TickRequestContextPerPartitionKey(
+                            asyncContainer,
+                            tickIdentifier,
+                            date,
+                            dateFormat);
 
-                tickRequestContexts.add(tickRequestContext);
-            }
+                    tickRequestContexts.add(tickRequestContext);
+                }
 
-            // Step 5: Create execution state for this RIC
-            if (!tickRequestContexts.isEmpty()) {
-                ricToRicQueryExecutionState.put(ric, new RicQueryExecutionState(tickRequestContexts));
-            } else {
-                logger.warn("No tick request contexts found for ric: {}", ric);
+                ricToRicQueryExecutionState.putIfAbsent(ric, new RicQueryExecutionState(new ArrayList<>(), totalTicks));
+                List<RicQueryExecutionStateByDate> ricQueryExecutionStateByDates = ricToRicQueryExecutionState.get(ric).getRicQueryExecutionStatesByDate();
+
+                ricQueryExecutionStateByDates.add(new RicQueryExecutionStateByDate(tickRequestContexts, date));
             }
         }
 
@@ -650,14 +667,17 @@ public class TickServiceImpl implements TicksService {
         // List to hold all retrieved ticks
         List<Tick> resultTicks = new ArrayList<>();
 
-        // Phase 1: Execute parallel queries until all are completed
+        // Phase 1: Execute sequential draining strategy for each RIC
+
         while (!ricToRicQueryExecutionState.values().stream().allMatch(RicQueryExecutionState::isCompleted)) {
             try {
-                // Create concurrent tasks for each RIC execution state
+                // Create the fetch function wrapper
+                java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction =
+                        createFetchNextPageWrapper(docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections);
+
+                // Execute sequential draining for each RIC execution state
                 List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
-                        .map(ricQueryExecutionState -> CompletableFuture.runAsync(() ->
-                                        fetchNextPage(ricQueryExecutionState, docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections),
-                                queryExecutorService))
+                        .map(ricQueryExecutionState -> ricQueryExecutionState.drainSequentialStrategy(queryExecutorService, fetchFunction))
                         .collect(Collectors.toList());
 
                 // Wait for all tasks to complete
@@ -776,15 +796,17 @@ public class TickServiceImpl implements TicksService {
         // List to hold all retrieved ticks
         List<Tick> resultTicks = new ArrayList<>();
 
-        // Phase 1: Execute parallel queries until all are completed
+        // Phase 1: Execute sequential draining strategy for each RIC
         while (!ricToRicQueryExecutionState.values().stream().allMatch(RicQueryExecutionState::isCompleted)) {
             try {
-                // Create concurrent tasks for each RIC execution state
+                // Create the fetch function wrapper
+                java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction =
+                        createFetchNextPageWithRangeFiltersWrapper(docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections,
+                                trdprc1Min, trdprc1Max, trnovrUnsMin, trnovrUnsMax);
+
+                // Execute sequential draining for each RIC execution state
                 List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
-                        .map(ricQueryExecutionState -> CompletableFuture.runAsync(() ->
-                                        fetchNextPageWithRangeFilters(ricQueryExecutionState, docTypes, startTime, endTime, 
-                                                pageSize, pinStart, totalTicks, projections, trdprc1Min, trdprc1Max, trnovrUnsMin, trnovrUnsMax),
-                                queryExecutorService))
+                        .map(ricQueryExecutionState -> ricQueryExecutionState.drainSequentialStrategy(queryExecutorService, fetchFunction))
                         .collect(Collectors.toList());
 
                 // Wait for all tasks to complete
@@ -901,15 +923,17 @@ public class TickServiceImpl implements TicksService {
         // List to hold all retrieved ticks
         List<Tick> resultTicks = new ArrayList<>();
 
-        // Phase 1: Execute parallel queries until all are completed
+        // Phase 1: Execute sequential draining strategy for each RIC
         while (!ricToRicQueryExecutionState.values().stream().allMatch(RicQueryExecutionState::isCompleted)) {
             try {
-                // Create concurrent tasks for each RIC execution state
+                // Create the fetch function wrapper
+                java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction =
+                        createFetchNextPageWithPriceVolumeFiltersWrapper(docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections,
+                                trdprc1Min, trdprc1Max, trdvol1Min);
+
+                // Execute sequential draining for each RIC execution state
                 List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
-                        .map(ricQueryExecutionState -> CompletableFuture.runAsync(() ->
-                                        fetchNextPageWithPriceVolumeFilters(ricQueryExecutionState, docTypes, startTime, endTime, 
-                                                pageSize, pinStart, totalTicks, projections, trdprc1Min, trdprc1Max, trdvol1Min),
-                                queryExecutorService))
+                        .map(ricQueryExecutionState -> ricQueryExecutionState.drainSequentialStrategy(queryExecutorService, fetchFunction))
                         .collect(Collectors.toList());
 
                 // Wait for all tasks to complete
@@ -1028,16 +1052,17 @@ public class TickServiceImpl implements TicksService {
         // List to hold all retrieved ticks
         List<Tick> resultTicks = new ArrayList<>();
 
-        // Phase 1: Execute parallel queries until all are completed
+        // Phase 1: Execute sequential draining strategy for each RIC
         while (!ricToRicQueryExecutionState.values().stream().allMatch(RicQueryExecutionState::isCompleted)) {
             try {
-                // Create concurrent tasks for each RIC execution state
+                // Create the fetch function wrapper
+                java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction =
+                        createFetchNextPageWithQualifiersFiltersWrapper(docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections,
+                                containsFilters, notContainsFilters, startsWithFilters, notStartsWithFilters);
+
+                // Execute sequential draining for each RIC execution state
                 List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
-                        .map(ricQueryExecutionState -> CompletableFuture.runAsync(() ->
-                                        fetchNextPageWithQualifiersFilters(ricQueryExecutionState, docTypes, startTime, endTime, 
-                                                pageSize, pinStart, totalTicks, projections, containsFilters, notContainsFilters, 
-                                                startsWithFilters, notStartsWithFilters),
-                                queryExecutorService))
+                        .map(ricQueryExecutionState -> ricQueryExecutionState.drainSequentialStrategy(queryExecutorService, fetchFunction))
                         .collect(Collectors.toList());
 
                 // Wait for all tasks to complete
@@ -1120,6 +1145,7 @@ public class TickServiceImpl implements TicksService {
      */
     private void fetchNextPage(
             RicQueryExecutionState ricQueryExecutionState,
+            TickRequestContextPerPartitionKey tickRequestContext,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
@@ -1128,19 +1154,10 @@ public class TickServiceImpl implements TicksService {
             int totalTicks,
             List<String> projections) {
 
-        // Step 1: Get next available execution context
-        TickRequestContextPerPartitionKey tickRequestContext
-                = TickServiceUtils.evaluateTickRequestContextToExecute(ricQueryExecutionState);
-
-        if (tickRequestContext == null) {
-            // No more contexts available, mark execution as completed
-            ricQueryExecutionState.setCompleted(true);
-            return;
-        }
-
         // Step 2: Prepare query execution
         CosmosAsyncContainer asyncContainer = tickRequestContext.getAsyncContainer();
         CosmosQueryRequestOptions queryRequestOptions = new CosmosQueryRequestOptions();
+        queryRequestOptions.setPartitionKey(new PartitionKey(tickRequestContext.getTickIdentifier()));
 
         // Step 3: Build or retrieve SQL query specification
         SqlQuerySpec querySpec = tickRequestContext.getSqlQuerySpec() != null ?
@@ -1200,7 +1217,7 @@ public class TickServiceImpl implements TicksService {
                 tickRequestContext.addCosmosDiagnostics(response.getCosmosDiagnostics());
 
                 // Add results to execution state
-                ricQueryExecutionState.addTicks(response.getResults(), totalTicks);
+                ricQueryExecutionState.addTicks(response.getResults());
             }
         } catch (CosmosException e) {
             logger.error("Cosmos exception during page fetch: {}", e.getMessage(), e);
@@ -1235,6 +1252,7 @@ public class TickServiceImpl implements TicksService {
      */
     private void fetchNextPageWithRangeFilters(
             RicQueryExecutionState ricQueryExecutionState,
+            TickRequestContextPerPartitionKey tickRequestContext,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
@@ -1246,10 +1264,6 @@ public class TickServiceImpl implements TicksService {
             Double trdprc1Max,
             Double trnovrUnsMin,
             Double trnovrUnsMax) {
-
-        // Step 1: Get next available execution context
-        TickRequestContextPerPartitionKey tickRequestContext
-                = TickServiceUtils.evaluateTickRequestContextToExecute(ricQueryExecutionState);
 
         if (tickRequestContext == null) {
             // No more contexts available, mark execution as completed
@@ -1323,7 +1337,7 @@ public class TickServiceImpl implements TicksService {
                 tickRequestContext.addCosmosDiagnostics(response.getCosmosDiagnostics());
 
                 // Add results to execution state
-                ricQueryExecutionState.addTicks(response.getResults(), totalTicks);
+                ricQueryExecutionState.addTicks(response.getResults());
             }
         } catch (CosmosException e) {
             logger.error("Cosmos exception during page fetch with range filters: {}", e.getMessage(), e);
@@ -1357,6 +1371,7 @@ public class TickServiceImpl implements TicksService {
      */
     private void fetchNextPageWithPriceVolumeFilters(
             RicQueryExecutionState ricQueryExecutionState,
+            TickRequestContextPerPartitionKey tickRequestContext,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
@@ -1368,13 +1383,8 @@ public class TickServiceImpl implements TicksService {
             Double trdprc1Max,
             Double trdvol1Min) {
 
-        // Step 1: Get next available execution context
-        TickRequestContextPerPartitionKey tickRequestContext
-                = TickServiceUtils.evaluateTickRequestContextToExecute(ricQueryExecutionState);
-
         if (tickRequestContext == null) {
-            // No more contexts available, mark execution as completed
-            ricQueryExecutionState.setCompleted(true);
+            // No context provided, skip execution
             return;
         }
 
@@ -1443,7 +1453,7 @@ public class TickServiceImpl implements TicksService {
                 tickRequestContext.addCosmosDiagnostics(response.getCosmosDiagnostics());
 
                 // Add results to execution state
-                ricQueryExecutionState.addTicks(response.getResults(), totalTicks);
+                ricQueryExecutionState.addTicks(response.getResults());
             }
         } catch (CosmosException e) {
             logger.error("Cosmos exception during page fetch with price volume filters: {}", e.getMessage(), e);
@@ -1478,6 +1488,7 @@ public class TickServiceImpl implements TicksService {
      */
     private void fetchNextPageWithQualifiersFilters(
             RicQueryExecutionState ricQueryExecutionState,
+            TickRequestContextPerPartitionKey tickRequestContext,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
@@ -1490,13 +1501,8 @@ public class TickServiceImpl implements TicksService {
             List<String> startsWithFilters,
             List<String> notStartsWithFilters) {
 
-        // Step 1: Get next available execution context
-        TickRequestContextPerPartitionKey tickRequestContext
-                = TickServiceUtils.evaluateTickRequestContextToExecute(ricQueryExecutionState);
-
         if (tickRequestContext == null) {
-            // No more contexts available, mark execution as completed
-            ricQueryExecutionState.setCompleted(true);
+            // No context provided, skip execution
             return;
         }
 
@@ -1566,7 +1572,7 @@ public class TickServiceImpl implements TicksService {
                 tickRequestContext.addCosmosDiagnostics(response.getCosmosDiagnostics());
 
                 // Add results to execution state
-                ricQueryExecutionState.addTicks(response.getResults(), totalTicks);
+                ricQueryExecutionState.addTicks(response.getResults());
             }
         } catch (CosmosException e) {
             logger.error("Cosmos exception during page fetch with qualifiers filters: {}", e.getMessage(), e);
@@ -1651,19 +1657,19 @@ public class TickServiceImpl implements TicksService {
         docTypePlaceholders.append(")");
 
         // Build partition key filter parameters
-        StringBuilder partitionKeyPlaceholders = new StringBuilder();
-        partitionKeyPlaceholders.append("(");
-
-        // Create parameters for each shard (partition key)
-        for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
-            String param = "@pk" + i;
-            parameters.add(new SqlParameter(param, tickIdentifier + "|" + i));
-            partitionKeyPlaceholders.append(param);
-            if (i <= this.cosmosDbAccountConfiguration.getShardCountPerRic() - 1) {
-                partitionKeyPlaceholders.append(", ");
-            }
-        }
-        partitionKeyPlaceholders.append(")");
+//        StringBuilder partitionKeyPlaceholders = new StringBuilder();
+//        partitionKeyPlaceholders.append("(");
+//
+//        // Create parameters for each shard (partition key)
+//        for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
+//            String param = "@pk" + i;
+//            parameters.add(new SqlParameter(param, tickIdentifier + "|" + i));
+//            partitionKeyPlaceholders.append(param);
+//            if (i <= this.cosmosDbAccountConfiguration.getShardCountPerRic() - 1) {
+//                partitionKeyPlaceholders.append(", ");
+//            }
+//        }
+//        partitionKeyPlaceholders.append(")");
 
         // Build SELECT clause based on projections
         String selectClause = buildSelectClause("C", projections);
@@ -1671,12 +1677,12 @@ public class TickServiceImpl implements TicksService {
         // Build final query with appropriate sorting
         if (pinStart) {
             // Ascending order for pinStart=true
-            String query = "SELECT " + selectClause + " FROM C WHERE C.pk IN " + partitionKeyPlaceholders + " AND C.docType IN " + docTypePlaceholders +
+            String query = "SELECT " + selectClause + " FROM C WHERE C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp ASC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
-            String query = "SELECT " + selectClause + " FROM C WHERE C.pk IN " + partitionKeyPlaceholders + " AND C.docType IN " + docTypePlaceholders +
+            String query = "SELECT " + selectClause + " FROM C WHERE C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime ORDER BY C.pk ASC, C.messageTimestamp DESC";
             return new SqlQuerySpec(query, parameters);
         }
@@ -2266,5 +2272,155 @@ public class TickServiceImpl implements TicksService {
             logger.error("Error executing getTicksWithQualifiersFilters: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to get ticks with qualifiers filters", e);
         }
+    }
+
+    /**
+     * Creates a function wrapper for fetchNextPage that can be used with drainParallelStrategy.
+     * This wrapper adapts the fetchNextPage method signature to work with the parallel draining strategy.
+     *
+     * @param docTypes List of document types to filter by
+     * @param startTime Start of time range
+     * @param endTime End of time range
+     * @param pageSize Page size for pagination
+     * @param pinStart Sorting order flag
+     * @param totalTicks Maximum number of ticks to return
+     * @param projections List of field names to include in the SELECT clause
+     * @return Function that can be used with drainParallelStrategy
+     */
+    private java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> createFetchNextPageWrapper(
+            List<String> docTypes,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            int pageSize,
+            boolean pinStart,
+            int totalTicks,
+            List<String> projections) {
+        
+        return (ricQueryExecutionState, tickRequestContextPerPartitionKey) -> CompletableFuture.runAsync(() -> {
+            try {
+                // Execute the fetch operation
+                fetchNextPage(ricQueryExecutionState, tickRequestContextPerPartitionKey, docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections);
+            } catch (Exception e) {
+                logger.error("Error in parallel fetch for context {}: {}", tickRequestContextPerPartitionKey.getTickIdentifier(), e.getMessage(), e);
+            }
+        }, queryExecutorService);
+    }
+
+    /**
+     * Creates a function wrapper for fetchNextPageWithRangeFilters that can be used with drainParallelStrategy.
+     *
+     * @param docTypes List of document types to filter by
+     * @param startTime Start of time range
+     * @param endTime End of time range
+     * @param pageSize Page size for pagination
+     * @param pinStart Sorting order flag
+     * @param totalTicks Maximum number of ticks to return
+     * @param projections List of field names to include in the SELECT clause
+     * @param trdprc1Min Minimum value for TRDPRC_1 filter
+     * @param trdprc1Max Maximum value for TRDPRC_1 filter
+     * @param trnovrUnsMin Minimum value for TRNOVR_UNS filter
+     * @param trnovrUnsMax Maximum value for TRNOVR_UNS filter
+     * @return Function that can be used with drainParallelStrategy
+     */
+    private java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> createFetchNextPageWithRangeFiltersWrapper(
+            List<String> docTypes,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            int pageSize,
+            boolean pinStart,
+            int totalTicks,
+            List<String> projections,
+            Double trdprc1Min,
+            Double trdprc1Max,
+            Double trnovrUnsMin,
+            Double trnovrUnsMax) {
+        
+        return (ricQueryExecutionState, tickRequestContextPerPartitionKey)-> CompletableFuture.runAsync(() -> {
+            try {
+                // Execute the fetch operation with range filters
+                fetchNextPageWithRangeFilters(ricQueryExecutionState, tickRequestContextPerPartitionKey, docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections,
+                        trdprc1Min, trdprc1Max, trnovrUnsMin, trnovrUnsMax);
+            } catch (Exception e) {
+                logger.error("Error in parallel fetch with range filters for context {}: {}", tickRequestContextPerPartitionKey.getTickIdentifier(), e.getMessage(), e);
+            }
+        }, queryExecutorService);
+    }
+
+    /**
+     * Creates a function wrapper for fetchNextPageWithPriceVolumeFilters that can be used with drainParallelStrategy.
+     *
+     * @param docTypes List of document types to filter by
+     * @param startTime Start of time range
+     * @param endTime End of time range
+     * @param pageSize Page size for pagination
+     * @param pinStart Sorting order flag
+     * @param totalTicks Maximum number of ticks to return
+     * @param projections List of field names to include in the SELECT clause
+     * @param trdprc1Min Minimum value for TRDPRC_1 filter
+     * @param trdprc1Max Maximum value for TRDPRC_1 filter
+     * @param trdvol1Min Minimum value for TRDVOL_1 filter
+     * @return Function that can be used with drainParallelStrategy
+     */
+    private java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> createFetchNextPageWithPriceVolumeFiltersWrapper(
+            List<String> docTypes,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            int pageSize,
+            boolean pinStart,
+            int totalTicks,
+            List<String> projections,
+            Double trdprc1Min,
+            Double trdprc1Max,
+            Double trdvol1Min) {
+        
+        return (ricQueryExecutionState, tickRequestContextPerPartitionKey) -> CompletableFuture.runAsync(() -> {
+            try {
+                // Execute the fetch operation with price-volume filters
+                fetchNextPageWithPriceVolumeFilters(ricQueryExecutionState, tickRequestContextPerPartitionKey, docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections,
+                        trdprc1Min, trdprc1Max, trdvol1Min);
+            } catch (Exception e) {
+                logger.error("Error in parallel fetch with price-volume filters for context {}: {}", tickRequestContextPerPartitionKey.getTickIdentifier(), e.getMessage(), e);
+            }
+        }, queryExecutorService);
+    }
+
+    /**
+     * Creates a function wrapper for fetchNextPageWithQualifiersFilters that can be used with drainParallelStrategy.
+     *
+     * @param docTypes List of document types to filter by
+     * @param startTime Start of time range
+     * @param endTime End of time range
+     * @param pageSize Page size for pagination
+     * @param pinStart Sorting order flag
+     * @param totalTicks Maximum number of ticks to return
+     * @param projections List of field names to include in the SELECT clause
+     * @param containsFilters List of strings that must be contained in the qualifiers field
+     * @param notContainsFilters List of strings that must NOT be contained in the qualifiers field
+     * @param startsWithFilters List of strings that the qualifiers field must start with
+     * @param notStartsWithFilters List of strings that the qualifiers field must NOT start with
+     * @return Function that can be used with drainParallelStrategy
+     */
+    private java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> createFetchNextPageWithQualifiersFiltersWrapper(
+            List<String> docTypes,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            int pageSize,
+            boolean pinStart,
+            int totalTicks,
+            List<String> projections,
+            List<String> containsFilters,
+            List<String> notContainsFilters,
+            List<String> startsWithFilters,
+            List<String> notStartsWithFilters) {
+        
+        return (ricQueryExecutionState, tickRequestContextPerPartitionKey) -> CompletableFuture.runAsync(() -> {
+            try {
+                // Execute the fetch operation with qualifiers filters
+                fetchNextPageWithQualifiersFilters(ricQueryExecutionState, tickRequestContextPerPartitionKey, docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections,
+                        containsFilters, notContainsFilters, startsWithFilters, notStartsWithFilters);
+            } catch (Exception e) {
+                logger.error("Error in parallel fetch with qualifiers filters for context {}: {}", tickRequestContextPerPartitionKey.getTickIdentifier(), e.getMessage(), e);
+            }
+        }, queryExecutorService);
     }
 }
