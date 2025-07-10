@@ -102,6 +102,15 @@ public class RicQueryExecutionState {
     }
 
     /**
+     * Gets the list of RicQueryExecutionStateByDate objects.
+     *
+     * @return List of RicQueryExecutionStateByDate objects
+     */
+    public List<RicQueryExecutionStateByDate> getRicQueryExecutionStatesByDate() {
+        return ricQueryExecutionStatesByDate;
+    }
+
+    /**
      * Gets all TickRequestContextPerPartitionKey objects across all date groups.
      * This method flattens the date-organized structure for backward compatibility.
      *
