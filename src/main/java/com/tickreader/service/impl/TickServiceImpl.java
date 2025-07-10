@@ -651,22 +651,23 @@ public class TickServiceImpl implements TicksService {
         // List to hold all retrieved ticks
         List<Tick> resultTicks = new ArrayList<>();
 
-        // Phase 1: Execute parallel queries until all are completed
-        while (!ricToRicQueryExecutionState.values().stream().allMatch(RicQueryExecutionState::isCompleted)) {
-            try {
-                // Create concurrent tasks for each RIC execution state
-                List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
-                        .map(ricQueryExecutionState -> CompletableFuture.runAsync(() ->
-                                        fetchNextPage(ricQueryExecutionState, docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections),
-                                queryExecutorService))
-                        .collect(Collectors.toList());
+        // Phase 1: Execute parallel queries using the new draining strategy
+        try {
+            // Create the fetch function wrapper
+            java.util.function.Function<TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction = 
+                    createFetchNextPageWrapper(docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections);
+            
+            // Execute parallel draining for each RIC execution state
+            List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
+                    .map(ricQueryExecutionState -> 
+                            TickServiceUtils.executeParallelDrainingWithFetchNextPage(ricQueryExecutionState, fetchFunction, queryExecutorService))
+                    .collect(Collectors.toList());
 
-                // Wait for all tasks to complete
-                CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
-            } catch (InterruptedException | ExecutionException e) {
-                logger.error("Error during query execution: {}", e.getMessage(), e);
-                throw new RuntimeException("Failed to execute queries", e);
-            }
+            // Wait for all tasks to complete
+            CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).get();
+        } catch (InterruptedException | ExecutionException e) {
+            logger.error("Error during query execution: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to execute queries", e);
         }
 
         // Record execution end time and log duration
@@ -2267,5 +2268,155 @@ public class TickServiceImpl implements TicksService {
             logger.error("Error executing getTicksWithQualifiersFilters: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to get ticks with qualifiers filters", e);
         }
+    }
+
+    /**
+     * Creates a function wrapper for fetchNextPage that can be used with drainParallelStrategy.
+     * This wrapper adapts the fetchNextPage method signature to work with the parallel draining strategy.
+     *
+     * @param docTypes List of document types to filter by
+     * @param startTime Start of time range
+     * @param endTime End of time range
+     * @param pageSize Page size for pagination
+     * @param pinStart Sorting order flag
+     * @param totalTicks Maximum number of ticks to return
+     * @param projections List of field names to include in the SELECT clause
+     * @return Function that can be used with drainParallelStrategy
+     */
+    private java.util.function.Function<TickRequestContextPerPartitionKey, CompletableFuture<Void>> createFetchNextPageWrapper(
+            List<String> docTypes,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            int pageSize,
+            boolean pinStart,
+            int totalTicks,
+            List<String> projections) {
+        
+        return context -> CompletableFuture.runAsync(() -> {
+            try {
+                // Execute the fetch operation
+                fetchNextPage(context, docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections);
+            } catch (Exception e) {
+                logger.error("Error in parallel fetch for context {}: {}", context.getTickIdentifier(), e.getMessage(), e);
+            }
+        }, queryExecutorService);
+    }
+
+    /**
+     * Creates a function wrapper for fetchNextPageWithRangeFilters that can be used with drainParallelStrategy.
+     *
+     * @param docTypes List of document types to filter by
+     * @param startTime Start of time range
+     * @param endTime End of time range
+     * @param pageSize Page size for pagination
+     * @param pinStart Sorting order flag
+     * @param totalTicks Maximum number of ticks to return
+     * @param projections List of field names to include in the SELECT clause
+     * @param trdprc1Min Minimum value for TRDPRC_1 filter
+     * @param trdprc1Max Maximum value for TRDPRC_1 filter
+     * @param trnovrUnsMin Minimum value for TRNOVR_UNS filter
+     * @param trnovrUnsMax Maximum value for TRNOVR_UNS filter
+     * @return Function that can be used with drainParallelStrategy
+     */
+    private java.util.function.Function<TickRequestContextPerPartitionKey, CompletableFuture<Void>> createFetchNextPageWithRangeFiltersWrapper(
+            List<String> docTypes,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            int pageSize,
+            boolean pinStart,
+            int totalTicks,
+            List<String> projections,
+            Double trdprc1Min,
+            Double trdprc1Max,
+            Double trnovrUnsMin,
+            Double trnovrUnsMax) {
+        
+        return context -> CompletableFuture.runAsync(() -> {
+            try {
+                // Execute the fetch operation with range filters
+                fetchNextPageWithRangeFilters(context, docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections,
+                        trdprc1Min, trdprc1Max, trnovrUnsMin, trnovrUnsMax);
+            } catch (Exception e) {
+                logger.error("Error in parallel fetch with range filters for context {}: {}", context.getTickIdentifier(), e.getMessage(), e);
+            }
+        }, queryExecutorService);
+    }
+
+    /**
+     * Creates a function wrapper for fetchNextPageWithPriceVolumeFilters that can be used with drainParallelStrategy.
+     *
+     * @param docTypes List of document types to filter by
+     * @param startTime Start of time range
+     * @param endTime End of time range
+     * @param pageSize Page size for pagination
+     * @param pinStart Sorting order flag
+     * @param totalTicks Maximum number of ticks to return
+     * @param projections List of field names to include in the SELECT clause
+     * @param trdprc1Min Minimum value for TRDPRC_1 filter
+     * @param trdprc1Max Maximum value for TRDPRC_1 filter
+     * @param trdvol1Min Minimum value for TRDVOL_1 filter
+     * @return Function that can be used with drainParallelStrategy
+     */
+    private java.util.function.Function<TickRequestContextPerPartitionKey, CompletableFuture<Void>> createFetchNextPageWithPriceVolumeFiltersWrapper(
+            List<String> docTypes,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            int pageSize,
+            boolean pinStart,
+            int totalTicks,
+            List<String> projections,
+            Double trdprc1Min,
+            Double trdprc1Max,
+            Double trdvol1Min) {
+        
+        return context -> CompletableFuture.runAsync(() -> {
+            try {
+                // Execute the fetch operation with price-volume filters
+                fetchNextPageWithPriceVolumeFilters(context, docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections,
+                        trdprc1Min, trdprc1Max, trdvol1Min);
+            } catch (Exception e) {
+                logger.error("Error in parallel fetch with price-volume filters for context {}: {}", context.getTickIdentifier(), e.getMessage(), e);
+            }
+        }, queryExecutorService);
+    }
+
+    /**
+     * Creates a function wrapper for fetchNextPageWithQualifiersFilters that can be used with drainParallelStrategy.
+     *
+     * @param docTypes List of document types to filter by
+     * @param startTime Start of time range
+     * @param endTime End of time range
+     * @param pageSize Page size for pagination
+     * @param pinStart Sorting order flag
+     * @param totalTicks Maximum number of ticks to return
+     * @param projections List of field names to include in the SELECT clause
+     * @param containsFilters List of strings that must be contained in the qualifiers field
+     * @param notContainsFilters List of strings that must NOT be contained in the qualifiers field
+     * @param startsWithFilters List of strings that the qualifiers field must start with
+     * @param notStartsWithFilters List of strings that the qualifiers field must NOT start with
+     * @return Function that can be used with drainParallelStrategy
+     */
+    private java.util.function.Function<TickRequestContextPerPartitionKey, CompletableFuture<Void>> createFetchNextPageWithQualifiersFiltersWrapper(
+            List<String> docTypes,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            int pageSize,
+            boolean pinStart,
+            int totalTicks,
+            List<String> projections,
+            List<String> containsFilters,
+            List<String> notContainsFilters,
+            List<String> startsWithFilters,
+            List<String> notStartsWithFilters) {
+        
+        return context -> CompletableFuture.runAsync(() -> {
+            try {
+                // Execute the fetch operation with qualifiers filters
+                fetchNextPageWithQualifiersFilters(context, docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections,
+                        containsFilters, notContainsFilters, startsWithFilters, notStartsWithFilters);
+            } catch (Exception e) {
+                logger.error("Error in parallel fetch with qualifiers filters for context {}: {}", context.getTickIdentifier(), e.getMessage(), e);
+            }
+        }, queryExecutorService);
     }
 }
