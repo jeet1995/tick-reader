@@ -9,15 +9,20 @@ import com.azure.cosmos.models.FeedResponse;
 import com.azure.cosmos.models.PartitionKey;
 import com.azure.cosmos.models.SqlParameter;
 import com.azure.cosmos.models.SqlQuerySpec;
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.PropertyAccessor;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.tickreader.config.CosmosDbAccount;
 import com.tickreader.config.CosmosDbAccountConfiguration;
 import com.tickreader.config.RicBasedCosmosClientFactory;
 import com.tickreader.dto.TickResponse;
 import com.tickreader.entity.BaseTick;
 import com.tickreader.entity.Tick;
-import com.tickreader.entity.TickWithNoNulls;
+import com.tickreader.entity.TickInResponse;
 import com.tickreader.service.TicksService;
 import com.tickreader.service.utils.TickServiceUtils;
 import org.apache.spark.unsafe.hash.Murmur3_x86_32;
@@ -46,9 +51,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
@@ -89,6 +92,7 @@ public class TickServiceImpl implements TicksService {
 
     /** Object mapper configured to exclude null values */
     private final ObjectMapper nonNullObjectMapper = new ObjectMapper();
+    private final ObjectMapper nullObjectMapper = new ObjectMapper();
 
     /**
      * Constructor for TickServiceImpl.
@@ -106,6 +110,13 @@ public class TickServiceImpl implements TicksService {
 
         // Configure object mapper to exclude null values from serialization
         nonNullObjectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+        nonNullObjectMapper.configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
+        nonNullObjectMapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.NONE);
+        nonNullObjectMapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
+
+        nullObjectMapper.configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
+        nonNullObjectMapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.NONE);
+        nonNullObjectMapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
     }
 
     /**
@@ -723,21 +734,33 @@ public class TickServiceImpl implements TicksService {
 
         if (includeNullValues) {
             // Include all ticks with null values
-            finalTicks.addAll(resultTicks);
-        } else {
-            // Convert to TickWithNoNulls to filter out null values
-            List<TickWithNoNulls> newTicks = resultTicks.stream()
-                    .map(tick -> nonNullObjectMapper.convertValue(tick, TickWithNoNulls.class))
+            List<ObjectNode> newTicks = resultTicks.stream()
+                    .map(tick -> nullObjectMapper.convertValue(tick, ObjectNode.class))
                     .collect(Collectors.toList());
 
-            finalTicks.addAll(newTicks);
-        }
+            // Return response with execution metrics
+            return new TickResponse(
+                    newTicks,
+                    includeDiagnostics ? cosmosDiagnosticsContextList : Collections.emptyList(),
+                    Duration.between(executionStartTime, executionEndTime));
+        } else {
+            // Convert to TickInResponse to filter out null values
+            List<ObjectNode> newTicks = resultTicks.stream()
+                    .map(tick -> {
+                        try {
+                            return nonNullObjectMapper.readValue(nonNullObjectMapper.writeValueAsString(tick), ObjectNode.class);
+                        } catch (JsonProcessingException e) {
+                            throw new RuntimeException(e);
+                        }
+                    })
+                    .collect(Collectors.toList());
 
-        // Return response with execution metrics
-        return new TickResponse(
-                finalTicks,
-                includeDiagnostics ? cosmosDiagnosticsContextList : Collections.emptyList(),
-                Duration.between(executionStartTime, executionEndTime));
+            // Return response with execution metrics
+            return new TickResponse(
+                    newTicks,
+                    includeDiagnostics ? cosmosDiagnosticsContextList : Collections.emptyList(),
+                    Duration.between(executionStartTime, executionEndTime));
+        }
     }
 
     /**
@@ -848,25 +871,36 @@ public class TickServiceImpl implements TicksService {
         }
 
         // Phase 3: Convert to final response format
-        List<BaseTick> finalTicks = new ArrayList<>();
 
         if (includeNullValues) {
             // Include all ticks with null values
-            finalTicks.addAll(resultTicks);
-        } else {
-            // Convert to TickWithNoNulls to filter out null values
-            List<TickWithNoNulls> newTicks = resultTicks.stream()
-                    .map(tick -> nonNullObjectMapper.convertValue(tick, TickWithNoNulls.class))
+            List<ObjectNode> newTicks = resultTicks.stream()
+                    .map(tick -> nullObjectMapper.convertValue(tick, ObjectNode.class))
                     .collect(Collectors.toList());
 
-            finalTicks.addAll(newTicks);
-        }
+            // Return response with execution metrics
+            return new TickResponse(
+                    newTicks,
+                    includeDiagnostics ? cosmosDiagnosticsContextList : Collections.emptyList(),
+                    Duration.between(executionStartTime, executionEndTime));
+        } else {
+            // Convert to TickInResponse to filter out null values
+            List<ObjectNode> newTicks = resultTicks.stream()
+                    .map(tick -> {
+                        try {
+                            return nonNullObjectMapper.readValue(nonNullObjectMapper.writeValueAsString(tick), ObjectNode.class);
+                        } catch (JsonProcessingException e) {
+                            throw new RuntimeException(e);
+                        }
+                    })
+                    .collect(Collectors.toList());
 
-        // Return response with execution metrics
-        return new TickResponse(
-                finalTicks,
-                includeDiagnostics ? cosmosDiagnosticsContextList : Collections.emptyList(),
-                Duration.between(executionStartTime, executionEndTime));
+            // Return response with execution metrics
+            return new TickResponse(
+                    newTicks,
+                    includeDiagnostics ? cosmosDiagnosticsContextList : Collections.emptyList(),
+                    Duration.between(executionStartTime, executionEndTime));
+        }
     }
 
     /**
@@ -975,25 +1009,36 @@ public class TickServiceImpl implements TicksService {
         }
 
         // Phase 3: Convert to final response format
-        List<BaseTick> finalTicks = new ArrayList<>();
 
         if (includeNullValues) {
             // Include all ticks with null values
-            finalTicks.addAll(resultTicks);
-        } else {
-            // Convert to TickWithNoNulls to filter out null values
-            List<TickWithNoNulls> newTicks = resultTicks.stream()
-                    .map(tick -> nonNullObjectMapper.convertValue(tick, TickWithNoNulls.class))
+            List<ObjectNode> newTicks = resultTicks.stream()
+                    .map(tick -> nullObjectMapper.convertValue(tick, ObjectNode.class))
                     .collect(Collectors.toList());
 
-            finalTicks.addAll(newTicks);
-        }
+            // Return response with execution metrics
+            return new TickResponse(
+                    newTicks,
+                    includeDiagnostics ? cosmosDiagnosticsContextList : Collections.emptyList(),
+                    Duration.between(executionStartTime, executionEndTime));
+        } else {
+            // Convert to TickInResponse to filter out null values
+            List<ObjectNode> newTicks = resultTicks.stream()
+                    .map(tick -> {
+                        try {
+                            return nonNullObjectMapper.readValue(nonNullObjectMapper.writeValueAsString(tick), ObjectNode.class);
+                        } catch (JsonProcessingException e) {
+                            throw new RuntimeException(e);
+                        }
+                    })
+                    .collect(Collectors.toList());
 
-        // Return response with execution metrics
-        return new TickResponse(
-                finalTicks,
-                includeDiagnostics ? cosmosDiagnosticsContextList : Collections.emptyList(),
-                Duration.between(executionStartTime, executionEndTime));
+            // Return response with execution metrics
+            return new TickResponse(
+                    newTicks,
+                    includeDiagnostics ? cosmosDiagnosticsContextList : Collections.emptyList(),
+                    Duration.between(executionStartTime, executionEndTime));
+        }
     }
 
     /**
@@ -1104,25 +1149,36 @@ public class TickServiceImpl implements TicksService {
         }
 
         // Phase 3: Convert to final response format
-        List<BaseTick> finalTicks = new ArrayList<>();
 
         if (includeNullValues) {
             // Include all ticks with null values
-            finalTicks.addAll(resultTicks);
-        } else {
-            // Convert to TickWithNoNulls to filter out null values
-            List<TickWithNoNulls> newTicks = resultTicks.stream()
-                    .map(tick -> nonNullObjectMapper.convertValue(tick, TickWithNoNulls.class))
+            List<ObjectNode> newTicks = resultTicks.stream()
+                    .map(tick -> nullObjectMapper.convertValue(tick, ObjectNode.class))
                     .collect(Collectors.toList());
 
-            finalTicks.addAll(newTicks);
-        }
+            // Return response with execution metrics
+            return new TickResponse(
+                    newTicks,
+                    includeDiagnostics ? cosmosDiagnosticsContextList : Collections.emptyList(),
+                    Duration.between(executionStartTime, executionEndTime));
+        } else {
+            // Convert to TickInResponse to filter out null values
+            List<ObjectNode> newTicks = resultTicks.stream()
+                    .map(tick -> {
+                        try {
+                            return nonNullObjectMapper.readValue(nonNullObjectMapper.writeValueAsString(tick), ObjectNode.class);
+                        } catch (JsonProcessingException e) {
+                            throw new RuntimeException(e);
+                        }
+                    })
+                    .collect(Collectors.toList());
 
-        // Return response with execution metrics
-        return new TickResponse(
-                finalTicks,
-                includeDiagnostics ? cosmosDiagnosticsContextList : Collections.emptyList(),
-                Duration.between(executionStartTime, executionEndTime));
+            // Return response with execution metrics
+            return new TickResponse(
+                    newTicks,
+                    includeDiagnostics ? cosmosDiagnosticsContextList : Collections.emptyList(),
+                    Duration.between(executionStartTime, executionEndTime));
+        }
     }
 
     /**
