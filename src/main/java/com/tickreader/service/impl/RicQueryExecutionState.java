@@ -87,7 +87,7 @@ public class RicQueryExecutionState {
         // Check if overall state is completed AND all individual date states are completed
         boolean allDateStatesCompleted = ricQueryExecutionStatesByDate.stream()
                 .allMatch(RicQueryExecutionStateByDate::isCompleted);
-        return this.isCompleted && allDateStatesCompleted;
+        return this.isCompleted || allDateStatesCompleted;
     }
 
     public synchronized void setCompleted(boolean completed) {
