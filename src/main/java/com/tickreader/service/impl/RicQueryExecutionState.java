@@ -10,8 +10,8 @@ import java.util.stream.Collectors;
 
 public class RicQueryExecutionState {
 
-    private List<Tick> ticks;
-    private List<RicQueryExecutionStateByDate> ricQueryExecutionStatesByDate;
+    private final List<Tick> ticks;
+    private final List<RicQueryExecutionStateByDate> ricQueryExecutionStatesByDate;
     private boolean isCompleted;
 
     /**
@@ -215,7 +215,7 @@ public class RicQueryExecutionState {
      * @return CompletableFuture that completes when all targets are reached or all contexts are drained
      */
     public CompletableFuture<Void> drainParallelStrategy(ExecutorService executorService,
-                                                       java.util.function.Function<TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction) {
+                                                       java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction) {
         List<CompletableFuture<Void>> dateGroupTasks = ricQueryExecutionStatesByDate.stream()
                 .map(dateState -> dateState.drainParallel(executorService, fetchFunction))
                 .collect(Collectors.toList());

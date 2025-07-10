@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 
 public final class TickServiceUtils {
@@ -98,7 +99,7 @@ public final class TickServiceUtils {
     public static CompletableFuture<Void> executeParallelDrainingStrategy(
             RicQueryExecutionState ricQueryExecutionState,
             ExecutorService executorService,
-            Function<TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction,
+            BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction,
             int targetTickCount) {
 
         // Set target tick count for all date groups
@@ -119,7 +120,7 @@ public final class TickServiceUtils {
      */
     public static CompletableFuture<Void> executeParallelDrainingWithFetchNextPage(
             RicQueryExecutionState ricQueryExecutionState,
-            java.util.function.Function<TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction,
+            java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction,
             ExecutorService executorService) {
         
         return ricQueryExecutionState.drainParallelStrategy(executorService, fetchFunction);
@@ -136,7 +137,7 @@ public final class TickServiceUtils {
      */
     public static CompletableFuture<Void> executeParallelDrainingWithRangeFilters(
             RicQueryExecutionState ricQueryExecutionState,
-            java.util.function.Function<TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction,
+            java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction,
             ExecutorService executorService) {
         
         return ricQueryExecutionState.drainParallelStrategy(executorService, fetchFunction);
@@ -153,7 +154,7 @@ public final class TickServiceUtils {
      */
     public static CompletableFuture<Void> executeParallelDrainingWithPriceVolumeFilters(
             RicQueryExecutionState ricQueryExecutionState,
-            java.util.function.Function<TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction,
+            java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction,
             ExecutorService executorService) {
         
         return ricQueryExecutionState.drainParallelStrategy(executorService, fetchFunction);
@@ -170,7 +171,7 @@ public final class TickServiceUtils {
      */
     public static CompletableFuture<Void> executeParallelDrainingWithQualifiersFilters(
             RicQueryExecutionState ricQueryExecutionState,
-            java.util.function.Function<TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction,
+            java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction,
             ExecutorService executorService) {
         
         return ricQueryExecutionState.drainParallelStrategy(executorService, fetchFunction);

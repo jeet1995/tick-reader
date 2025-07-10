@@ -176,7 +176,7 @@ public class RicQueryExecutionStateByDate {
      * @return CompletableFuture that completes when all contexts are drained or target is reached
      */
     public CompletableFuture<Void> drainParallel(ExecutorService executorService, 
-                                               java.util.function.Function<TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction) {
+                                               java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction) {
         List<TickRequestContextPerPartitionKey> activeContexts = getActiveContexts();
         
         if (activeContexts.isEmpty()) {
