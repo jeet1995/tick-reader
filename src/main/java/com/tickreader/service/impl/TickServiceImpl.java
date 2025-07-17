@@ -1251,7 +1251,6 @@ public class TickServiceImpl implements TicksService {
 
                             // Handle resource not found scenario
                             if (TickServiceUtils.isResourceNotFound(cosmosException)) {
-                                logger.warn("Cosmos exception during page fetch: {}", cosmosException.getMessage());
                                 tickRequestContext.setContinuationToken("drained");
                                 logger.warn("No tick data found for date: {}", tickRequestContext.getRequestDateAsString());
 
@@ -1371,7 +1370,6 @@ public class TickServiceImpl implements TicksService {
 
                             // Handle resource not found scenario
                             if (TickServiceUtils.isResourceNotFound(cosmosException)) {
-                                logger.warn("Cosmos exception during page fetch with range filters: {}", cosmosException.getMessage());
                                 tickRequestContext.setContinuationToken("drained");
                                 logger.warn("No tick data found for date: {}", tickRequestContext.getRequestDateAsString());
 
@@ -1487,7 +1485,6 @@ public class TickServiceImpl implements TicksService {
 
                             // Handle resource not found scenario
                             if (TickServiceUtils.isResourceNotFound(cosmosException)) {
-                                logger.warn("Cosmos exception during page fetch with price volume filters: {}", cosmosException.getMessage());
                                 tickRequestContext.setContinuationToken("drained");
                                 logger.warn("No tick data found for date: {}", tickRequestContext.getRequestDateAsString());
 
@@ -1606,7 +1603,6 @@ public class TickServiceImpl implements TicksService {
 
                             // Handle resource not found scenario
                             if (TickServiceUtils.isResourceNotFound(cosmosException)) {
-                                logger.warn("Cosmos exception during page fetch with qualifiers filters: {}", cosmosException.getMessage());
                                 tickRequestContext.setContinuationToken("drained");
                                 logger.warn("No tick data found for date: {}", tickRequestContext.getRequestDateAsString());
 
