@@ -1174,7 +1174,6 @@ public class TickServiceImpl implements TicksService {
                         // Handle Cosmos DB exceptions
                         if (throwable instanceof CosmosException) {
                             CosmosException cosmosException = (CosmosException) throwable;
-                            logger.error("Cosmos exception during page fetch: {}", cosmosException.getMessage(), cosmosException);
 
                             // Handle resource not found scenario
                             if (TickServiceUtils.isResourceNotFound(cosmosException)) {
@@ -1185,7 +1184,6 @@ public class TickServiceImpl implements TicksService {
                             }
                         }
 
-                        logger.error("Error during page fetch: {}", throwable.getMessage(), throwable);
                         return Mono.error(throwable);
                     })
                     .block();
@@ -1296,7 +1294,6 @@ public class TickServiceImpl implements TicksService {
                         // Handle Cosmos DB exceptions
                         if (throwable instanceof CosmosException) {
                             CosmosException cosmosException = (CosmosException) throwable;
-                            logger.error("Cosmos exception during page fetch with range filters: {}", cosmosException.getMessage(), cosmosException);
 
                             // Handle resource not found scenario
                             if (TickServiceUtils.isResourceNotFound(cosmosException)) {
@@ -1307,7 +1304,6 @@ public class TickServiceImpl implements TicksService {
                             }
                         }
 
-                        logger.error("Error during page fetch with range filters: {}", throwable.getMessage(), throwable);
                         return Mono.error(throwable);
                     })
                     .block();
@@ -1415,7 +1411,6 @@ public class TickServiceImpl implements TicksService {
                         // Handle Cosmos DB exceptions
                         if (throwable instanceof CosmosException) {
                             CosmosException cosmosException = (CosmosException) throwable;
-                            logger.error("Cosmos exception during page fetch with price volume filters: {}", cosmosException.getMessage(), cosmosException);
 
                             // Handle resource not found scenario
                             if (TickServiceUtils.isResourceNotFound(cosmosException)) {
@@ -1426,7 +1421,6 @@ public class TickServiceImpl implements TicksService {
                             }
                         }
 
-                        logger.error("Error during page fetch with price volume filters: {}", throwable.getMessage(), throwable);
                         return Mono.error(throwable);
                     })
                     .block();
@@ -1537,7 +1531,6 @@ public class TickServiceImpl implements TicksService {
                         // Handle Cosmos DB exceptions
                         if (throwable instanceof CosmosException) {
                             CosmosException cosmosException = (CosmosException) throwable;
-                            logger.error("Cosmos exception during page fetch with qualifiers filters: {}", cosmosException.getMessage(), cosmosException);
 
                             // Handle resource not found scenario
                             if (TickServiceUtils.isResourceNotFound(cosmosException)) {
@@ -1548,7 +1541,6 @@ public class TickServiceImpl implements TicksService {
                             }
                         }
 
-                        logger.error("Error during page fetch with qualifiers filters: {}", throwable.getMessage(), throwable);
                         return Mono.error(throwable);
                     })
                     .block();
