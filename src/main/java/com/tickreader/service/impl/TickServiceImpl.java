@@ -22,7 +22,6 @@ import com.tickreader.config.RicBasedCosmosClientFactory;
 import com.tickreader.dto.TickResponse;
 import com.tickreader.entity.BaseTick;
 import com.tickreader.entity.Tick;
-import com.tickreader.entity.TickInResponse;
 import com.tickreader.service.TicksService;
 import com.tickreader.service.utils.TickServiceUtils;
 import org.apache.spark.unsafe.hash.Murmur3_x86_32;
@@ -110,10 +109,10 @@ public class TickServiceImpl implements TicksService {
         this.cosmosDbAccountConfiguration = cosmosDbAccountConfiguration;
 
         // Initialize thread pool with concurrency level based on CPU count
-        this.queryExecutorService = Executors.newFixedThreadPool(concurrency);
+        this.queryExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt() * 10);
 
-        this.apiExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt());
-        this.perRicExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt());
+        this.apiExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt() * 10);
+        this.perRicExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt() * 10);
 
         // Configure object mapper to exclude null values from serialization
         nonNullObjectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);

@@ -218,44 +218,22 @@ public class RicQueryExecutionState {
      */
     public CompletableFuture<Void> drainSequentialStrategy(ExecutorService executorService,
                                                          java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction) {
-        return CompletableFuture.runAsync(() -> {
-            for (RicQueryExecutionStateByDate dateState : ricQueryExecutionStatesByDate) {
-                // Skip if overall target is reached
-                if (isOverallTargetReached()) {
-                    break;
-                }
 
-                // Drain this date state completely
-                try {
-                    dateState.drainParallel(this, executorService, fetchFunction).get();
-                } catch (Exception e) {
-                    // Log error but continue with next date state
-                    System.err.println("Error draining date state " + dateState.getDateKey() + ": " + e.getMessage());
-                }
+        CompletableFuture<Void> result = CompletableFuture.completedFuture(null);
 
-                // Check if overall target is reached after draining this date state
-                if (isOverallTargetReached()) {
-                    break;
-                }
+        for (RicQueryExecutionStateByDate dateState : ricQueryExecutionStatesByDate) {
+            // Skip if overall target is reached
+            if (isOverallTargetReached()) {
+                break;
             }
-        }, executorService);
-    }
 
-    /**
-     * Legacy method for backward compatibility.
-     * Executes parallel draining strategy across all date groups.
-     * Drains each date group in parallel until target tick count is reached.
-     *
-     * @param executorService Executor service for parallel execution
-     * @param fetchFunction Function to fetch next page for a context
-     * @return CompletableFuture that completes when all targets are reached or all contexts are drained
-     */
-    public CompletableFuture<Void> drainParallelStrategy(ExecutorService executorService,
-                                                       java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction) {
-        List<CompletableFuture<Void>> dateGroupTasks = ricQueryExecutionStatesByDate.stream()
-                .map(dateState -> dateState.drainParallel(this, executorService, fetchFunction))
-                .collect(Collectors.toList());
+            result = result.thenCompose(v -> {
+                if (isOverallTargetReached()) return CompletableFuture.completedFuture(null);
 
-        return CompletableFuture.allOf(dateGroupTasks.toArray(new CompletableFuture[0]));
+                return dateState.drainParallel(this, executorService, fetchFunction);
+            });
+        }
+
+        return result;
     }
 }
