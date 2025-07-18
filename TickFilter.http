@@ -1,0 +1,4 @@
+### GET request to example server
+GET http://localhost:8080/ticks/with-qualifiers-filters?rics=MO.DEU&docTypes=TAS,TAQ&totalTicks=50&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&containsFilters=ASK_TONE&notContainsFilters=BID_TONE,GV4_TEXT&notStartsWithFilters=TI&projections=TRDPRC_1,TRDVOL_1,qualifiers
+
+###

@@ -1324,15 +1324,10 @@ public class TickServiceImpl implements TicksService {
             Double trnovrUnsMin,
             Double trnovrUnsMax) {
 
-        if (tickRequestContext == null) {
-            // No more contexts available, mark execution as completed
-            ricQueryExecutionState.setCompleted(true);
-            return;
-        }
-
         // Step 2: Prepare query execution
         CosmosAsyncContainer asyncContainer = tickRequestContext.getAsyncContainer();
         CosmosQueryRequestOptions queryRequestOptions = new CosmosQueryRequestOptions();
+        queryRequestOptions.setPartitionKey(new PartitionKey(tickRequestContext.getTickIdentifier()));
 
         // Step 3: Build or retrieve SQL query specification with range filters
         SqlQuerySpec querySpec = tickRequestContext.getSqlQuerySpec() != null ?
@@ -1439,14 +1434,10 @@ public class TickServiceImpl implements TicksService {
             Double trdprc1Max,
             Double trdvol1Min) {
 
-        if (tickRequestContext == null) {
-            // No context provided, skip execution
-            return;
-        }
-
         // Step 2: Prepare query execution
         CosmosAsyncContainer asyncContainer = tickRequestContext.getAsyncContainer();
         CosmosQueryRequestOptions queryRequestOptions = new CosmosQueryRequestOptions();
+        queryRequestOptions.setPartitionKey(new PartitionKey(tickRequestContext.getTickIdentifier()));
 
         // Step 3: Build or retrieve SQL query specification with price and volume filters
         SqlQuerySpec querySpec = tickRequestContext.getSqlQuerySpec() != null ?
@@ -1554,14 +1545,10 @@ public class TickServiceImpl implements TicksService {
             List<String> startsWithFilters,
             List<String> notStartsWithFilters) {
 
-        if (tickRequestContext == null) {
-            // No context provided, skip execution
-            return;
-        }
-
         // Step 2: Prepare query execution
         CosmosAsyncContainer asyncContainer = tickRequestContext.getAsyncContainer();
         CosmosQueryRequestOptions queryRequestOptions = new CosmosQueryRequestOptions();
+        queryRequestOptions.setPartitionKey(new PartitionKey(tickRequestContext.getTickIdentifier()));
 
         // Step 3: Build or retrieve SQL query specification with qualifiers string filters
         SqlQuerySpec querySpec = tickRequestContext.getSqlQuerySpec() != null ?
@@ -1825,19 +1812,19 @@ public class TickServiceImpl implements TicksService {
         docTypePlaceholders.append(")");
 
         // Build partition key filter parameters
-        StringBuilder partitionKeyPlaceholders = new StringBuilder();
-        partitionKeyPlaceholders.append("(");
-
-        // Create parameters for each shard (partition key)
-        for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
-            String param = "@pk" + i;
-            parameters.add(new SqlParameter(param, tickIdentifier + "|" + i));
-            partitionKeyPlaceholders.append(param);
-            if (i <= this.cosmosDbAccountConfiguration.getShardCountPerRic() - 1) {
-                partitionKeyPlaceholders.append(", ");
-            }
-        }
-        partitionKeyPlaceholders.append(")");
+//        StringBuilder partitionKeyPlaceholders = new StringBuilder();
+//        partitionKeyPlaceholders.append("(");
+//
+//        // Create parameters for each shard (partition key)
+//        for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
+//            String param = "@pk" + i;
+//            parameters.add(new SqlParameter(param, tickIdentifier + "|" + i));
+//            partitionKeyPlaceholders.append(param);
+//            if (i <= this.cosmosDbAccountConfiguration.getShardCountPerRic() - 1) {
+//                partitionKeyPlaceholders.append(", ");
+//            }
+//        }
+//        partitionKeyPlaceholders.append(")");
 
         // Build range filter conditions
         StringBuilder rangeFilters = new StringBuilder();
@@ -1868,16 +1855,14 @@ public class TickServiceImpl implements TicksService {
         // Build final query with appropriate sorting
         if (pinStart) {
             // Ascending order for pinStart=true
-            String query = "SELECT " + selectClause + " FROM C WHERE C.pk IN " + partitionKeyPlaceholders + 
-                    " AND C.docType IN " + docTypePlaceholders +
+            String query = "SELECT " + selectClause + " FROM C WHERE C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime" +
                     rangeFilters +
                     " ORDER BY C.pk ASC, C.messageTimestamp ASC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
-            String query = "SELECT " + selectClause + " FROM C WHERE C.pk IN " + partitionKeyPlaceholders + 
-                    " AND C.docType IN " + docTypePlaceholders +
+            String query = "SELECT " + selectClause + " FROM C WHERE C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime" +
                     rangeFilters +
                     " ORDER BY C.pk ASC, C.messageTimestamp DESC";
@@ -1970,19 +1955,19 @@ public class TickServiceImpl implements TicksService {
         docTypePlaceholders.append(")");
 
         // Build partition key filter parameters
-        StringBuilder partitionKeyPlaceholders = new StringBuilder();
-        partitionKeyPlaceholders.append("(");
-
-        // Create parameters for each shard (partition key)
-        for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
-            String param = "@pk" + i;
-            parameters.add(new SqlParameter(param, tickIdentifier + "|" + i));
-            partitionKeyPlaceholders.append(param);
-            if (i <= this.cosmosDbAccountConfiguration.getShardCountPerRic() - 1) {
-                partitionKeyPlaceholders.append(", ");
-            }
-        }
-        partitionKeyPlaceholders.append(")");
+//        StringBuilder partitionKeyPlaceholders = new StringBuilder();
+//        partitionKeyPlaceholders.append("(");
+//
+//        // Create parameters for each shard (partition key)
+//        for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
+//            String param = "@pk" + i;
+//            parameters.add(new SqlParameter(param, tickIdentifier + "|" + i));
+//            partitionKeyPlaceholders.append(param);
+//            if (i <= this.cosmosDbAccountConfiguration.getShardCountPerRic() - 1) {
+//                partitionKeyPlaceholders.append(", ");
+//            }
+//        }
+//        partitionKeyPlaceholders.append(")");
 
         // Build range filter conditions
         StringBuilder rangeFilters = new StringBuilder();
@@ -2009,16 +1994,14 @@ public class TickServiceImpl implements TicksService {
         // Build final query with appropriate sorting
         if (pinStart) {
             // Ascending order for pinStart=true
-            String query = "SELECT " + selectClause + " FROM C WHERE C.pk IN " + partitionKeyPlaceholders + 
-                    " AND C.docType IN " + docTypePlaceholders +
+            String query = "SELECT " + selectClause + " FROM C WHERE C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime" +
                     rangeFilters +
                     " ORDER BY C.pk ASC, C.messageTimestamp ASC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
-            String query = "SELECT " + selectClause + " FROM C WHERE C.pk IN " + partitionKeyPlaceholders + 
-                    " AND C.docType IN " + docTypePlaceholders +
+            String query = "SELECT " + selectClause + " FROM C WHERE C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime" +
                     rangeFilters +
                     " ORDER BY C.pk ASC, C.messageTimestamp DESC";
@@ -2115,19 +2098,19 @@ public class TickServiceImpl implements TicksService {
         docTypePlaceholders.append(")");
 
         // Build partition key filter parameters
-        StringBuilder partitionKeyPlaceholders = new StringBuilder();
-        partitionKeyPlaceholders.append("(");
-
-        // Create parameters for each shard (partition key)
-        for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
-            String param = "@pk" + i;
-            parameters.add(new SqlParameter(param, tickIdentifier + "|" + i));
-            partitionKeyPlaceholders.append(param);
-            if (i <= this.cosmosDbAccountConfiguration.getShardCountPerRic() - 1) {
-                partitionKeyPlaceholders.append(", ");
-            }
-        }
-        partitionKeyPlaceholders.append(")");
+//        StringBuilder partitionKeyPlaceholders = new StringBuilder();
+//        partitionKeyPlaceholders.append("(");
+//
+//        // Create parameters for each shard (partition key)
+//        for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
+//            String param = "@pk" + i;
+//            parameters.add(new SqlParameter(param, tickIdentifier + "|" + i));
+//            partitionKeyPlaceholders.append(param);
+//            if (i <= this.cosmosDbAccountConfiguration.getShardCountPerRic() - 1) {
+//                partitionKeyPlaceholders.append(", ");
+//            }
+//        }
+//        partitionKeyPlaceholders.append(")");
 
         // Build string filter conditions
         StringBuilder stringFilters = new StringBuilder();
@@ -2174,16 +2157,14 @@ public class TickServiceImpl implements TicksService {
         // Build final query with appropriate sorting
         if (pinStart) {
             // Ascending order for pinStart=true
-            String query = "SELECT " + selectClause + " FROM C WHERE C.pk IN " + partitionKeyPlaceholders + 
-                    " AND C.docType IN " + docTypePlaceholders +
+            String query = "SELECT " + selectClause + " FROM C WHERE C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime" +
                     stringFilters +
                     " ORDER BY C.pk ASC, C.messageTimestamp ASC";
 
             return new SqlQuerySpec(query, parameters);
         } else {
-            String query = "SELECT " + selectClause + " FROM C WHERE C.pk IN " + partitionKeyPlaceholders + 
-                    " AND C.docType IN " + docTypePlaceholders +
+            String query = "SELECT " + selectClause + " FROM C WHERE C.docType IN " + docTypePlaceholders +
                     " AND C.messageTimestamp >= @startTime AND C.messageTimestamp < @endTime" +
                     stringFilters +
                     " ORDER BY C.pk ASC, C.messageTimestamp DESC";

@@ -1,0 +1,4 @@
+### GET request to example server
+GET http://localhost:8080/ticks/with-range-filters?rics=.HNXMSC&docTypes=TAS,TAQ&totalTicks=50&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&trdprc1Min=10&trdprc1Max=2000.0&trnovrUnsMin=1&trnovrUnsMax=200&projections=TRDPRC_1,TRNOVR_UNS
+
+###

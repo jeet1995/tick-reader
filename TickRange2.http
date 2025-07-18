@@ -1,0 +1,4 @@
+### GET request to example server
+GET http://localhost:8080/ticks/with-price-volume-filters?rics=DEHD8WTW=HVBG&docTypes=TAS,TAQ&totalTicks=50&pinStart=true&startTime=2024-10-07T00:00:00.0000000Z&endTime=2024-10-07T23:59:59.9999999Z&trdprc1Min=100.0&trdprc1Max=200.0&trdvol1Min=10000.0&projections=TRDPRC_1,TRDVOL_1
+
+###
