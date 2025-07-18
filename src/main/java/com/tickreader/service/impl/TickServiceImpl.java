@@ -1203,7 +1203,6 @@ public class TickServiceImpl implements TicksService {
      * @param endTime End of time range
      * @param pageSize Number of items per page
      * @param pinStart Sorting order flag
-     * @param totalTicks Maximum number of ticks to return
      */
     private void fetchNextPage(
             RicQueryExecutionState ricQueryExecutionState,
@@ -1213,7 +1212,6 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime endTime,
             int pageSize,
             boolean pinStart,
-            int totalTicks,
             List<String> projections) {
 
         // Step 2: Prepare query execution
@@ -1225,15 +1223,13 @@ public class TickServiceImpl implements TicksService {
         SqlQuerySpec querySpec = tickRequestContext.getSqlQuerySpec() != null ?
             tickRequestContext.getSqlQuerySpec() :
             getSqlQuerySpec(
-                tickRequestContext.getTickIdentifier(),
-                docTypes,
+                    docTypes,
                 startTime,
                 endTime,
                 tickRequestContext.getRequestDateAsString(),
                 tickRequestContext.getDateFormat(),
                 pinStart,
-                totalTicks,
-                projections);
+                    projections);
 
         tickRequestContext.setSqlQuerySpec(querySpec);
 
@@ -1302,7 +1298,6 @@ public class TickServiceImpl implements TicksService {
      * @param endTime End of time range
      * @param pageSize Number of items per page
      * @param pinStart Sorting order flag
-     * @param totalTicks Maximum number of ticks to return
      * @param projections List of field names to include in the SELECT clause
      * @param trdprc1Min Minimum value for TRDPRC_1 filter (inclusive)
      * @param trdprc1Max Maximum value for TRDPRC_1 filter (inclusive)
@@ -1317,7 +1312,6 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime endTime,
             int pageSize,
             boolean pinStart,
-            int totalTicks,
             List<String> projections,
             Double trdprc1Min,
             Double trdprc1Max,
@@ -1333,15 +1327,13 @@ public class TickServiceImpl implements TicksService {
         SqlQuerySpec querySpec = tickRequestContext.getSqlQuerySpec() != null ?
             tickRequestContext.getSqlQuerySpec() :
             getSqlQuerySpecWithRangeFilters(
-                tickRequestContext.getTickIdentifier(),
-                docTypes,
+                    docTypes,
                 startTime,
                 endTime,
                 tickRequestContext.getRequestDateAsString(),
                 tickRequestContext.getDateFormat(),
                 pinStart,
-                totalTicks,
-                projections,
+                    projections,
                 trdprc1Min,
                 trdprc1Max,
                 trnovrUnsMin,
@@ -1414,7 +1406,6 @@ public class TickServiceImpl implements TicksService {
      * @param endTime End of time range
      * @param pageSize Number of items per page
      * @param pinStart Sorting order flag
-     * @param totalTicks Maximum number of ticks to return
      * @param projections List of field names to include in the SELECT clause
      * @param trdprc1Min Minimum value for TRDPRC_1 filter (inclusive)
      * @param trdprc1Max Maximum value for TRDPRC_1 filter (inclusive)
@@ -1428,7 +1419,6 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime endTime,
             int pageSize,
             boolean pinStart,
-            int totalTicks,
             List<String> projections,
             Double trdprc1Min,
             Double trdprc1Max,
@@ -1443,15 +1433,13 @@ public class TickServiceImpl implements TicksService {
         SqlQuerySpec querySpec = tickRequestContext.getSqlQuerySpec() != null ?
             tickRequestContext.getSqlQuerySpec() :
             getSqlQuerySpecWithPriceVolumeFilters(
-                tickRequestContext.getTickIdentifier(),
-                docTypes,
+                    docTypes,
                 startTime,
                 endTime,
                 tickRequestContext.getRequestDateAsString(),
                 tickRequestContext.getDateFormat(),
                 pinStart,
-                totalTicks,
-                projections,
+                    projections,
                 trdprc1Min,
                 trdprc1Max,
                 trdvol1Min);
@@ -1637,25 +1625,21 @@ public class TickServiceImpl implements TicksService {
      *   AND C.messageTimestamp < @endTime
      * ORDER BY C.messageTimestamp [ASC|DESC]
      *
-     * @param tickIdentifier Base identifier for the tick (RIC|date)
      * @param docTypes List of document types to filter by
      * @param startTime Start of time range
      * @param endTime End of time range
      * @param localDateAsString Date string for container-specific time bounds
      * @param format Date format pattern
      * @param pinStart If true, sort ascending; if false, sort descending
-     * @param totalTicks Maximum number of ticks to return
      * @return SqlQuerySpec with parameterized query and parameters
      */
     private SqlQuerySpec getSqlQuerySpec(
-            String tickIdentifier,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
             String localDateAsString,
             String format,
             boolean pinStart,
-            int totalTicks,
             List<String> projections) {
 
         // Parse the date string to get container-specific date bounds
@@ -1692,21 +1676,6 @@ public class TickServiceImpl implements TicksService {
             }
         }
         docTypePlaceholders.append(")");
-
-        // Build partition key filter parameters
-//        StringBuilder partitionKeyPlaceholders = new StringBuilder();
-//        partitionKeyPlaceholders.append("(");
-//
-//        // Create parameters for each shard (partition key)
-//        for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
-//            String param = "@pk" + i;
-//            parameters.add(new SqlParameter(param, tickIdentifier + "|" + i));
-//            partitionKeyPlaceholders.append(param);
-//            if (i <= this.cosmosDbAccountConfiguration.getShardCountPerRic() - 1) {
-//                partitionKeyPlaceholders.append(", ");
-//            }
-//        }
-//        partitionKeyPlaceholders.append(")");
 
         // Build SELECT clause based on projections
         String selectClause = buildSelectClause("C", projections);
@@ -1746,14 +1715,12 @@ public class TickServiceImpl implements TicksService {
      *   AND C.TRNOVR_UNS >= @trnovrUnsMin AND C.TRNOVR_UNS <= @trnovrUnsMax
      * ORDER BY C.messageTimestamp [ASC|DESC]
      *
-     * @param tickIdentifier Base identifier for the tick (RIC|date)
      * @param docTypes List of document types to filter by
      * @param startTime Start of time range
      * @param endTime End of time range
      * @param localDateAsString Date string for container-specific time bounds
      * @param format Date format pattern
      * @param pinStart If true, sort ascending; if false, sort descending
-     * @param totalTicks Maximum number of ticks to return
      * @param projections List of field names to include in the SELECT clause
      * @param trdprc1Min Minimum value for TRDPRC_1 filter (inclusive)
      * @param trdprc1Max Maximum value for TRDPRC_1 filter (inclusive)
@@ -1762,14 +1729,12 @@ public class TickServiceImpl implements TicksService {
      * @return SqlQuerySpec with parameterized query and parameters
      */
     private SqlQuerySpec getSqlQuerySpecWithRangeFilters(
-            String tickIdentifier,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
             String localDateAsString,
             String format,
             boolean pinStart,
-            int totalTicks,
             List<String> projections,
             Double trdprc1Min,
             Double trdprc1Max,
@@ -1810,21 +1775,6 @@ public class TickServiceImpl implements TicksService {
             }
         }
         docTypePlaceholders.append(")");
-
-        // Build partition key filter parameters
-//        StringBuilder partitionKeyPlaceholders = new StringBuilder();
-//        partitionKeyPlaceholders.append("(");
-//
-//        // Create parameters for each shard (partition key)
-//        for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
-//            String param = "@pk" + i;
-//            parameters.add(new SqlParameter(param, tickIdentifier + "|" + i));
-//            partitionKeyPlaceholders.append(param);
-//            if (i <= this.cosmosDbAccountConfiguration.getShardCountPerRic() - 1) {
-//                partitionKeyPlaceholders.append(", ");
-//            }
-//        }
-//        partitionKeyPlaceholders.append(")");
 
         // Build range filter conditions
         StringBuilder rangeFilters = new StringBuilder();
@@ -1891,14 +1841,12 @@ public class TickServiceImpl implements TicksService {
      *   AND C.TRDVOL_1 >= @trdvol1Min
      * ORDER BY C.messageTimestamp [ASC|DESC]
      *
-     * @param tickIdentifier Base identifier for the tick (RIC|date)
      * @param docTypes List of document types to filter by
      * @param startTime Start of time range
      * @param endTime End of time range
      * @param localDateAsString Date string for container-specific time bounds
      * @param format Date format pattern
      * @param pinStart If true, sort ascending; if false, sort descending
-     * @param totalTicks Maximum number of ticks to return
      * @param projections List of field names to include in the SELECT clause
      * @param trdprc1Min Minimum value for TRDPRC_1 filter (inclusive)
      * @param trdprc1Max Maximum value for TRDPRC_1 filter (inclusive)
@@ -1906,14 +1854,12 @@ public class TickServiceImpl implements TicksService {
      * @return SqlQuerySpec with parameterized query and parameters
      */
     private SqlQuerySpec getSqlQuerySpecWithPriceVolumeFilters(
-            String tickIdentifier,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
             String localDateAsString,
             String format,
             boolean pinStart,
-            int totalTicks,
             List<String> projections,
             Double trdprc1Min,
             Double trdprc1Max,
@@ -1953,21 +1899,6 @@ public class TickServiceImpl implements TicksService {
             }
         }
         docTypePlaceholders.append(")");
-
-        // Build partition key filter parameters
-//        StringBuilder partitionKeyPlaceholders = new StringBuilder();
-//        partitionKeyPlaceholders.append("(");
-//
-//        // Create parameters for each shard (partition key)
-//        for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
-//            String param = "@pk" + i;
-//            parameters.add(new SqlParameter(param, tickIdentifier + "|" + i));
-//            partitionKeyPlaceholders.append(param);
-//            if (i <= this.cosmosDbAccountConfiguration.getShardCountPerRic() - 1) {
-//                partitionKeyPlaceholders.append(", ");
-//            }
-//        }
-//        partitionKeyPlaceholders.append(")");
 
         // Build range filter conditions
         StringBuilder rangeFilters = new StringBuilder();
@@ -2330,7 +2261,7 @@ public class TickServiceImpl implements TicksService {
         return (ricQueryExecutionState, tickRequestContextPerPartitionKey) -> CompletableFuture.runAsync(() -> {
             try {
                 // Execute the fetch operation
-                fetchNextPage(ricQueryExecutionState, tickRequestContextPerPartitionKey, docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections);
+                fetchNextPage(ricQueryExecutionState, tickRequestContextPerPartitionKey, docTypes, startTime, endTime, pageSize, pinStart, projections);
             } catch (Exception e) {
                 logger.error("Error in parallel fetch for context {}: {}", tickRequestContextPerPartitionKey.getTickIdentifier(), e.getMessage(), e);
             }
@@ -2369,7 +2300,7 @@ public class TickServiceImpl implements TicksService {
         return (ricQueryExecutionState, tickRequestContextPerPartitionKey)-> CompletableFuture.runAsync(() -> {
             try {
                 // Execute the fetch operation with range filters
-                fetchNextPageWithRangeFilters(ricQueryExecutionState, tickRequestContextPerPartitionKey, docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections,
+                fetchNextPageWithRangeFilters(ricQueryExecutionState, tickRequestContextPerPartitionKey, docTypes, startTime, endTime, pageSize, pinStart, projections,
                         trdprc1Min, trdprc1Max, trnovrUnsMin, trnovrUnsMax);
             } catch (Exception e) {
                 logger.error("Error in parallel fetch with range filters for context {}: {}", tickRequestContextPerPartitionKey.getTickIdentifier(), e.getMessage(), e);
@@ -2407,7 +2338,7 @@ public class TickServiceImpl implements TicksService {
         return (ricQueryExecutionState, tickRequestContextPerPartitionKey) -> CompletableFuture.runAsync(() -> {
             try {
                 // Execute the fetch operation with price-volume filters
-                fetchNextPageWithPriceVolumeFilters(ricQueryExecutionState, tickRequestContextPerPartitionKey, docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections,
+                fetchNextPageWithPriceVolumeFilters(ricQueryExecutionState, tickRequestContextPerPartitionKey, docTypes, startTime, endTime, pageSize, pinStart, projections,
                         trdprc1Min, trdprc1Max, trdvol1Min);
             } catch (Exception e) {
                 logger.error("Error in parallel fetch with price-volume filters for context {}: {}", tickRequestContextPerPartitionKey.getTickIdentifier(), e.getMessage(), e);
