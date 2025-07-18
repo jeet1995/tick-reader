@@ -1511,7 +1511,6 @@ public class TickServiceImpl implements TicksService {
      * @param endTime End of time range
      * @param pageSize Number of items per page
      * @param pinStart Sorting order flag
-     * @param totalTicks Maximum number of ticks to return
      * @param projections List of field names to include in the SELECT clause
      * @param containsFilters List of strings that must be contained in the qualifiers field
      * @param notContainsFilters List of strings that must NOT be contained in the qualifiers field
@@ -1526,7 +1525,6 @@ public class TickServiceImpl implements TicksService {
             LocalDateTime endTime,
             int pageSize,
             boolean pinStart,
-            int totalTicks,
             List<String> projections,
             List<String> containsFilters,
             List<String> notContainsFilters,
@@ -1542,15 +1540,13 @@ public class TickServiceImpl implements TicksService {
         SqlQuerySpec querySpec = tickRequestContext.getSqlQuerySpec() != null ?
             tickRequestContext.getSqlQuerySpec() :
             getSqlQuerySpecWithQualifiersFilters(
-                tickRequestContext.getTickIdentifier(),
-                docTypes,
+                    docTypes,
                 startTime,
                 endTime,
                 tickRequestContext.getRequestDateAsString(),
                 tickRequestContext.getDateFormat(),
                 pinStart,
-                totalTicks,
-                projections,
+                    projections,
                 containsFilters,
                 notContainsFilters,
                 startsWithFilters,
@@ -1963,14 +1959,12 @@ public class TickServiceImpl implements TicksService {
      *   AND NOT STARTSWITH(C.qualifiers, @notStartsWith0) AND NOT STARTSWITH(C.qualifiers, @notStartsWith1) ...
      * ORDER BY C.messageTimestamp [ASC|DESC]
      *
-     * @param tickIdentifier Base identifier for the tick (RIC|date)
      * @param docTypes List of document types to filter by
      * @param startTime Start of time range
      * @param endTime End of time range
      * @param localDateAsString Date string for container-specific time bounds
      * @param format Date format pattern
      * @param pinStart If true, sort ascending; if false, sort descending
-     * @param totalTicks Maximum number of ticks to return
      * @param projections List of field names to include in the SELECT clause
      * @param containsFilters List of strings that must be contained in the qualifiers field
      * @param notContainsFilters List of strings that must NOT be contained in the qualifiers field
@@ -1979,14 +1973,12 @@ public class TickServiceImpl implements TicksService {
      * @return SqlQuerySpec with parameterized query and parameters
      */
     private SqlQuerySpec getSqlQuerySpecWithQualifiersFilters(
-            String tickIdentifier,
             List<String> docTypes,
             LocalDateTime startTime,
             LocalDateTime endTime,
             String localDateAsString,
             String format,
             boolean pinStart,
-            int totalTicks,
             List<String> projections,
             List<String> containsFilters,
             List<String> notContainsFilters,
@@ -2027,21 +2019,6 @@ public class TickServiceImpl implements TicksService {
             }
         }
         docTypePlaceholders.append(")");
-
-        // Build partition key filter parameters
-//        StringBuilder partitionKeyPlaceholders = new StringBuilder();
-//        partitionKeyPlaceholders.append("(");
-//
-//        // Create parameters for each shard (partition key)
-//        for (int i = 1; i <= this.cosmosDbAccountConfiguration.getShardCountPerRic(); i++) {
-//            String param = "@pk" + i;
-//            parameters.add(new SqlParameter(param, tickIdentifier + "|" + i));
-//            partitionKeyPlaceholders.append(param);
-//            if (i <= this.cosmosDbAccountConfiguration.getShardCountPerRic() - 1) {
-//                partitionKeyPlaceholders.append(", ");
-//            }
-//        }
-//        partitionKeyPlaceholders.append(")");
 
         // Build string filter conditions
         StringBuilder stringFilters = new StringBuilder();
@@ -2378,7 +2355,7 @@ public class TickServiceImpl implements TicksService {
         return (ricQueryExecutionState, tickRequestContextPerPartitionKey) -> CompletableFuture.runAsync(() -> {
             try {
                 // Execute the fetch operation with qualifiers filters
-                fetchNextPageWithQualifiersFilters(ricQueryExecutionState, tickRequestContextPerPartitionKey, docTypes, startTime, endTime, pageSize, pinStart, totalTicks, projections,
+                fetchNextPageWithQualifiersFilters(ricQueryExecutionState, tickRequestContextPerPartitionKey, docTypes, startTime, endTime, pageSize, pinStart, projections,
                         containsFilters, notContainsFilters, startsWithFilters, notStartsWithFilters);
             } catch (Exception e) {
                 logger.error("Error in parallel fetch with qualifiers filters for context {}: {}", tickRequestContextPerPartitionKey.getTickIdentifier(), e.getMessage(), e);
