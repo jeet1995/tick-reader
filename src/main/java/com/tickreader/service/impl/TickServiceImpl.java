@@ -108,7 +108,7 @@ public class TickServiceImpl implements TicksService {
         this.clientFactory = clientFactory;
         this.cosmosDbAccountConfiguration = cosmosDbAccountConfiguration;
 
-        int totalThreads = Configs.getCPUCnt() * 10;
+        int totalThreads = Configs.getCPUCnt() * 30;
 
         // Initialize thread pool with concurrency level based on CPU count
         this.queryExecutorService = Executors.newFixedThreadPool(totalThreads / 3);
