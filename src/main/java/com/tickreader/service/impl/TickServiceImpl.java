@@ -87,9 +87,9 @@ public class TickServiceImpl implements TicksService {
     /** Thread pool for executing concurrent queries */
     private final ExecutorService queryExecutorService;
 
-    private final ExecutorService perRicExecutorService;
-
-    private final ExecutorService apiExecutorService;
+//    private final ExecutorService perRicExecutorService;
+//
+//    private final ExecutorService apiExecutorService;
 
     /** Concurrency level: CPU count * 10 for optimal performance */
     private final int concurrency = Configs.getCPUCnt() * 10;
@@ -112,8 +112,8 @@ public class TickServiceImpl implements TicksService {
         // Initialize thread pool with concurrency level based on CPU count
         this.queryExecutorService = Executors.newFixedThreadPool(concurrency);
 
-        this.apiExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt());
-        this.perRicExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt());
+//        this.apiExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt());
+//        this.perRicExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt());
 
         // Configure object mapper to exclude null values from serialization
         nonNullObjectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
@@ -330,7 +330,7 @@ public class TickServiceImpl implements TicksService {
                     pageSize,
                     includeDiagnostics,
                     projections);
-        }, apiExecutorService);
+        }, queryExecutorService);
     }
 
     /**
@@ -404,7 +404,7 @@ public class TickServiceImpl implements TicksService {
                     trdprc1Max,
                     trnovrUnsMin,
                     trnovrUnsMax);
-        }, apiExecutorService);
+        }, queryExecutorService);
     }
 
     /**
@@ -475,7 +475,7 @@ public class TickServiceImpl implements TicksService {
                     trdprc1Min,
                     trdprc1Max,
                     trdvol1Min);
-        }, apiExecutorService);
+        }, queryExecutorService);
     }
 
     /**
@@ -549,7 +549,7 @@ public class TickServiceImpl implements TicksService {
                     notContainsFilters,
                     startsWithFilters,
                     notStartsWithFilters);
-        }, apiExecutorService);
+        }, queryExecutorService);
     }
 
     /**
@@ -695,7 +695,7 @@ public class TickServiceImpl implements TicksService {
 
                 // Execute sequential draining for each RIC execution state
                 List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
-                        .map(ricQueryExecutionState -> ricQueryExecutionState.drainSequentialStrategy(perRicExecutorService, fetchFunction))
+                        .map(ricQueryExecutionState -> ricQueryExecutionState.drainSequentialStrategy(queryExecutorService, fetchFunction))
                         .collect(Collectors.toList());
 
                 // Wait for all tasks to complete
@@ -836,7 +836,7 @@ public class TickServiceImpl implements TicksService {
 
                 // Execute sequential draining for each RIC execution state
                 List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
-                        .map(ricQueryExecutionState -> ricQueryExecutionState.drainSequentialStrategy(perRicExecutorService, fetchFunction))
+                        .map(ricQueryExecutionState -> ricQueryExecutionState.drainSequentialStrategy(queryExecutorService, fetchFunction))
                         .collect(Collectors.toList());
 
                 // Wait for all tasks to complete
@@ -974,7 +974,7 @@ public class TickServiceImpl implements TicksService {
 
                 // Execute sequential draining for each RIC execution state
                 List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
-                        .map(ricQueryExecutionState -> ricQueryExecutionState.drainSequentialStrategy(perRicExecutorService, fetchFunction))
+                        .map(ricQueryExecutionState -> ricQueryExecutionState.drainSequentialStrategy(queryExecutorService, fetchFunction))
                         .collect(Collectors.toList());
 
                 // Wait for all tasks to complete
@@ -1114,7 +1114,7 @@ public class TickServiceImpl implements TicksService {
 
                 // Execute sequential draining for each RIC execution state
                 List<CompletableFuture<Void>> tasks = ricToRicQueryExecutionState.values().stream()
-                        .map(ricQueryExecutionState -> ricQueryExecutionState.drainSequentialStrategy(perRicExecutorService, fetchFunction))
+                        .map(ricQueryExecutionState -> ricQueryExecutionState.drainSequentialStrategy(queryExecutorService, fetchFunction))
                         .collect(Collectors.toList());
 
                 // Wait for all tasks to complete
