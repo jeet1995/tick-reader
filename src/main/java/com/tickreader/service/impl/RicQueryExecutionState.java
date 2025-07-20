@@ -219,26 +219,21 @@ public class RicQueryExecutionState {
     public CompletableFuture<Void> drainSequentialStrategy(ExecutorService executorService,
                                                          java.util.function.BiFunction<RicQueryExecutionState, TickRequestContextPerPartitionKey, CompletableFuture<Void>> fetchFunction) {
 
-        return CompletableFuture.runAsync(() -> {
-            for (RicQueryExecutionStateByDate dateState : ricQueryExecutionStatesByDate) {
-                // Skip if overall target is reached
-                if (isOverallTargetReached()) {
-                    break;
-                }
+        CompletableFuture<Void> result = CompletableFuture.completedFuture(null);
 
-                // Drain this date state completely
-                try {
-                    dateState.drainParallel(this, executorService, fetchFunction).get();
-                } catch (Exception e) {
-                    // Log error but continue with next date state
-                    System.err.println("Error draining date state " + dateState.getDateKey() + ": " + e.getMessage());
-                }
-
-                // Check if overall target is reached after draining this date state
-                if (isOverallTargetReached()) {
-                    break;
-                }
+        for (RicQueryExecutionStateByDate dateState : ricQueryExecutionStatesByDate) {
+            // Skip if overall target is reached
+            if (isOverallTargetReached()) {
+                break;
             }
-        }, executorService);
+
+            result = result.thenCompose(v -> {
+                if (isOverallTargetReached()) return CompletableFuture.completedFuture(null);
+
+                return dateState.drainParallel(this, executorService, fetchFunction);
+            });
+        }
+
+        return result;
     }
 }
