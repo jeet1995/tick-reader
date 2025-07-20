@@ -109,9 +109,9 @@ public class TickServiceImpl implements TicksService {
         this.cosmosDbAccountConfiguration = cosmosDbAccountConfiguration;
 
         // Initialize thread pool with concurrency level based on CPU count
-        this.queryExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt() * 5);
-        this.apiExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt() * 5);
-        this.perRicExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt() * 5);
+        this.queryExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt() * 10);
+        this.apiExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt() * 10);
+        this.perRicExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt() * 10);
 
         // Configure object mapper to exclude null values from serialization
         nonNullObjectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
