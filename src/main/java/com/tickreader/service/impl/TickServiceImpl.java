@@ -111,7 +111,7 @@ public class TickServiceImpl implements TicksService {
         // Initialize thread pool with concurrency level based on CPU count
         this.queryExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt() * 9);
 
-        this.apiExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt() * 2);
+        this.apiExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt() * 9);
         this.perRicExecutorService = Executors.newFixedThreadPool(Configs.getCPUCnt());
 
         // Configure object mapper to exclude null values from serialization
